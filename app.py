@@ -23,6 +23,7 @@ METRICS_LIST = Configuration.metrics_list
 # list of ModelPredictor Objects shared between processes
 PREDICTOR_MODEL_LIST = list()
 
+print(f"Prometheus URL: {Configuration.prometheus_url}")
 
 pc = PrometheusConnect(
     url=Configuration.prometheus_url,
@@ -35,6 +36,7 @@ for metric in METRICS_LIST:
     metric_init = pc.get_current_metric_value(metric_name=metric)
 
     for unique_metric in metric_init:
+        # 在这里定义选择不同的模型，可以根据 label 来
         PREDICTOR_MODEL_LIST.append(
             model.MetricPredictor(
                 unique_metric,
@@ -98,7 +100,6 @@ class MainHandler(tornado.web.RequestHandler):
                 current_metric_value.metric_values["y"][0] > prediction["yhat_lower"][0]
             ):
                 anomaly = 0
-
             # create a new time series that has value_type=anomaly
             # this value is 1 if an anomaly is found 0 if not
             GAUGE_DICT[metric_name].labels(
@@ -175,7 +176,7 @@ if __name__ == "__main__":
 
     # Set up the tornado web app
     app = make_app(predicted_model_queue)
-    app.listen(8080)
+    app.listen(8789)
     server_process = Process(target=tornado.ioloop.IOLoop.instance().start)
     # Start up the server to expose the metrics.
     server_process.start()

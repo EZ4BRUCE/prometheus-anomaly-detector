@@ -1,0 +1,55 @@
+
+image:
+  repository: quay.io/aicoe/prometheus-anomaly-detector
+  tag: latest
+
+# kubectx aliyun-newdev-unit && \
+# helm install -n mo-ob pad prometheus-anomaly-detector \
+# --set image.repository=registry.cn-hangzhou.aliyuncs.com/mocloud/prometheus-anomaly-detector
+
+prometheus:
+  url: http://mo-ob-opensource-kube-prom-prometheus.mo-ob:9090
+  prometheusAccessToken: 123d
+  metricsList:
+  # TPS
+  - sql_transaction_total{matrixorigin_io_owner="freetier-01"}
+  # - node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace="freetier-01"}
+  # - sum by(account, matrixorigin_io_owner) (rate(sql_transaction_total{matrixorigin_io_owner="freetier-01"}[5m]))
+  # - sum by(pod) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace="freetier-01"})
+  retrainingIntervalMinutes: 60
+  rollingTrainingWindowSize: 1d
+
+
+resources: 
+  limits:
+    cpu: 2000m
+    memory: 4G
+  requests:
+    cpu: 2000m
+    memory: 4G
+
+# This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+
+
+# Additional volumes on the output Deployment definition.
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+# Additional volumeMounts on the output Deployment definition.
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
+
+

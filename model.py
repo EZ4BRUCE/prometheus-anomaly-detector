@@ -8,7 +8,7 @@ from prometheus_api_client import Metric
 # Set up logging
 _LOGGER = logging.getLogger(__name__)
 
-
+# 模型对象，实现了他就可以新加一个模型
 class MetricPredictor:
     """docstring for Predictor."""
 
@@ -57,7 +57,7 @@ class MetricPredictor:
 
     def predict_value(self, prediction_datetime):
         """Return the predicted value of the metric for the prediction_datetime."""
-        nearest_index = self.predicted_df.index.get_loc(
-            prediction_datetime, method="nearest"
-        )
+        nearest_index = self.predicted_df.index.get_indexer(
+            [prediction_datetime], method="nearest"
+        )[0]
         return self.predicted_df.iloc[[nearest_index]]
