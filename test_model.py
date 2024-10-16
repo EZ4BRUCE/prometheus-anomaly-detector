@@ -6,7 +6,7 @@ from test_configuration import Configuration
 import mlflow
 
 # import model_fourier as model
-import model
+import model_prophet
 
 
 # Set up logging
@@ -101,7 +101,7 @@ for metric in METRICS_LIST:
     )
     _LOGGER.info("Downloaded metric data")
 
-    model_mp = model.MetricPredictor(
+    model_mp = model_prophet.MetricPredictor(
         train_data[0],
         rolling_data_window_size=Configuration.rolling_training_window_size,
     )
