@@ -94,7 +94,8 @@ class MainHandler(tornado.web.RequestHandler):
             # and publish the values for each of them
             for column_name in list(prediction.columns):
                 GAUGE_DICT[metric_name].labels(
-                    **predictor_model.metric.label_config, value_type=column_name
+                    **predictor_model.metric.label_config, value_type=column_name,
+                    model_name=predictor_model.model_name, metric_type="anomaly-detection"
                 ).set(prediction[column_name][0])
 
             # Calculate for an anomaly (can be different for different models)
@@ -108,7 +109,8 @@ class MainHandler(tornado.web.RequestHandler):
             # create a new time series that has value_type=anomaly
             # this value is 1 if an anomaly is found 0 if not
             GAUGE_DICT[metric_name].labels(
-                **predictor_model.metric.label_config, value_type="anomaly"
+                **predictor_model.metric.label_config, value_type="anomaly",
+                model_name=predictor_model.model_name, metric_type="anomaly-detection"
             ).set(anomaly)
 
         self.write(generate_latest(REGISTRY).decode("utf-8"))
@@ -168,11 +170,13 @@ class AddMetricHandler(tornado.web.RequestHandler):
                     # Update GAUGE_DICT
                     label_list = list(unique_metric.label_config.keys())
                     label_list.append("value_type")
+                    label_list.append("model_name")
+                    label_list.append("metric_type")
                     if unique_metric.metric_name not in GAUGE_DICT:
                         GAUGE_DICT[unique_metric.metric_name] = Gauge(
                             unique_metric.metric_name + "_" + new_predictor.model_name,
                             new_predictor.model_description,
-                            label_list,
+                            labelnames=label_list,
                         )
 
             # Train only the newly added predictors
