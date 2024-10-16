@@ -13,15 +13,17 @@ _LOGGER = logging.getLogger(__name__)
 class MetricPredictor:
     """docstring for Predictor."""
 
-    model_name = "Fourier"
+    model_name = "fourier"
     model_description = "Forecast value based on fourier analysis"
     model = None
     predicted_df = None
     metric = None
+    label_config_with_matric_name = None
 
-    def __init__(self, metric, rolling_data_window_size="10d"):
+    def __init__(self, metric, label_config_with_matric_name, rolling_data_window_size="10d"):
         """Initialize metric object."""
         self.metric = Metric(metric, rolling_data_window_size)
+        self.label_config_with_matric_name = label_config_with_matric_name
 
     def fourier_extrapolation(self, input_series, n_predict, n_harmonics):
         """Perform the Fourier extrapolation on time series data."""

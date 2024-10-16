@@ -17,10 +17,12 @@ class MetricPredictor:
     model = None
     predicted_df = None
     metric = None
+    label_config_with_matric_name = None
 
-    def __init__(self, metric, rolling_data_window_size="10d"):
+    def __init__(self, metric, label_config_with_matric_name, rolling_data_window_size="10d"):
         """Initialize the Metric object."""
         self.metric = Metric(metric, rolling_data_window_size)
+        self.label_config_with_matric_name = label_config_with_matric_name
 
     def train(self, metric_data=None, prediction_duration=15):
         """Train the Prophet model and store the predictions in predicted_df."""

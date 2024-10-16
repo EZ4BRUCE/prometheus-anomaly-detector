@@ -12,15 +12,19 @@ import tornado.web
 from prometheus_client import Gauge, generate_latest, REGISTRY
 from prometheus_api_client import PrometheusConnect, Metric
 from configuration import Configuration
-import model
+import model_prophet
+import model_fourier
+import model_lstm
 import schedule
+import asyncio
+import json
 
 # Set up logging
 _LOGGER = logging.getLogger(__name__)
 
 METRICS_LIST = Configuration.metrics_list
 
-# list of ModelPredictor Objects shared between processes
+# 初始化为空列表
 PREDICTOR_MODEL_LIST = list()
 
 print(f"Prometheus URL: {Configuration.prometheus_url}")
@@ -31,31 +35,32 @@ pc = PrometheusConnect(
     disable_ssl=True,
 )
 
-for metric in METRICS_LIST:
-    # Initialize a predictor for all metrics first
-    metric_init = pc.get_current_metric_value(metric_name=metric)
+# 去除初始化添加指标的训练
+# for metric in METRICS_LIST:
+#     # Initialize a predictor for all metrics first
+#     metric_init = pc.get_current_metric_value(metric_name=metric)
 
-    for unique_metric in metric_init:
-        # 在这里定义选择不同的模型，可以根据 label 来
-        PREDICTOR_MODEL_LIST.append(
-            model.MetricPredictor(
-                unique_metric,
-                rolling_data_window_size=Configuration.rolling_training_window_size,
-            )
-        )
+#     for unique_metric in metric_init:
+#         # 在这里定义选择不同的模型，可以根据 label 来
+#         PREDICTOR_MODEL_LIST.append(
+#             model.MetricPredictor(
+#                 unique_metric,
+#                 rolling_data_window_size=Configuration.rolling_training_window_size,
+#             )
+#         )
 
 # A gauge set for the predicted values
 GAUGE_DICT = dict()
-for predictor in PREDICTOR_MODEL_LIST:
-    unique_metric = predictor.metric
-    label_list = list(unique_metric.label_config.keys())
-    label_list.append("value_type")
-    if unique_metric.metric_name not in GAUGE_DICT:
-        GAUGE_DICT[unique_metric.metric_name] = Gauge(
-            unique_metric.metric_name + "_" + predictor.model_name,
-            predictor.model_description,
-            label_list,
-        )
+# for predictor in PREDICTOR_MODEL_LIST:
+#     unique_metric = predictor.metric
+#     label_list = list(unique_metric.label_config.keys())
+#     label_list.append("value_type")
+#     if unique_metric.metric_name not in GAUGE_DICT:
+#         GAUGE_DICT[unique_metric.metric_name] = Gauge(
+#             unique_metric.metric_name + "_" + predictor.model_name,
+#             predictor.model_description,
+#             label_list,
+#         )
 
 
 class MainHandler(tornado.web.RequestHandler):
@@ -110,6 +115,105 @@ class MainHandler(tornado.web.RequestHandler):
         self.set_header("Content-Type", "text; charset=utf-8")
 
 
+class AddMetricHandler(tornado.web.RequestHandler):
+    """Handler to add new metrics for training."""
+
+    def initialize(self, data_queue):
+        """Initialize with data queue."""
+        self.data_queue = data_queue
+
+    async def post(self):
+        """Add a new metric and trigger model training."""
+        try:
+            # Parse JSON body
+            data = json.loads(self.request.body)
+            new_metric = data.get("metric")
+            model_name = data.get("model")
+            window_size = data.get("window_size")
+            _LOGGER.info(f"Received new metric for training: {new_metric}, model: {model_name}")
+
+            # Get current metric value
+            metric_init = pc.get_current_metric_value(metric_name=new_metric)
+
+            for predictor in PREDICTOR_MODEL_LIST:
+                _LOGGER.info(f"current {predictor.metric.metric_name} predictor: {predictor.model_name} {predictor.metric.label_config}")
+
+            # List to store newly added predictors
+            new_predictors = []
+
+            for m in metric_init:
+                # Check if the unique_metric already exists in PREDICTOR_MODEL_LIST
+                _LOGGER.info(f"get unique_metric: {m}")
+                
+                label_config_with_matric_name = m["metric"]
+                metric_name = label_config_with_matric_name["__name__"]
+                
+                is_initial_run = not any(
+                    predictor.metric.metric_name == metric_name and
+                    predictor.label_config_with_matric_name == label_config_with_matric_name
+                    for predictor in PREDICTOR_MODEL_LIST
+                )
+                
+
+                # If it doesn't exist, add a new predictor to the list
+                if is_initial_run:
+                    if window_size==None:
+                        window_size = Configuration.rolling_training_window_size
+                    new_predictor = self.new_model_predictor(m, label_config_with_matric_name, model_name, window_size)
+                    new_predictors.append(new_predictor)
+                    PREDICTOR_MODEL_LIST.append(new_predictor)
+                    
+                    unique_metric = new_predictor.metric
+                    
+                    # Update GAUGE_DICT
+                    label_list = list(unique_metric.label_config.keys())
+                    label_list.append("value_type")
+                    if unique_metric.metric_name not in GAUGE_DICT:
+                        GAUGE_DICT[unique_metric.metric_name] = Gauge(
+                            unique_metric.metric_name + "_" + new_predictor.model_name,
+                            new_predictor.model_description,
+                            label_list,
+                        )
+
+            # Train only the newly added predictors
+            if new_predictors:
+                # Schedule the training as a background task
+                asyncio.create_task(train_model_async(new_predictors, initial_run=True, data_queue=self.data_queue))
+                self.write({"status": "success", "message": f"Metric [{new_metric}] added and training started."})
+            else:
+                _LOGGER.info(f"Metric [{new_metric}] predictor already exists. Skipping training.")
+                self.write({"status": "success", "message": f"Metric [{new_metric}]'s predictor already exists. Skipping training."})
+
+        except json.JSONDecodeError:
+            self.set_status(400)
+            self.write({"status": "error", "message": "Invalid JSON"})
+        except Exception as e:
+            _LOGGER.error(f"Error adding new metric: {str(e)}")
+            self.write({"status": "error", "message": str(e)})
+
+    def new_model_predictor(self, unique_metric,label_config_with_matric_name, model_name, rolling_data_window_size):
+        if model_name == "prophet":
+            return model_prophet.MetricPredictor(
+                unique_metric,
+                label_config_with_matric_name,
+                rolling_data_window_size=rolling_data_window_size,
+            )
+        elif model_name == "fourier":
+            return model_fourier.MetricPredictor(
+                unique_metric,
+                label_config_with_matric_name,
+                rolling_data_window_size=rolling_data_window_size,
+            )
+        elif model_name == "lstm":
+            return model_lstm.MetricPredictor(
+                unique_metric,
+                label_config_with_matric_name,
+                rolling_data_window_size=rolling_data_window_size,
+            )
+        else:
+            raise ValueError(f"Invalid model name: {model_name}")
+        
+        
 def make_app(data_queue):
     """Initialize the tornado web app."""
     _LOGGER.info("Initializing Tornado Web App")
@@ -117,15 +221,18 @@ def make_app(data_queue):
         [
             (r"/metrics", MainHandler, dict(data_queue=data_queue)),
             (r"/", MainHandler, dict(data_queue=data_queue)),
-        ]
+            (r"/add_metric", AddMetricHandler, dict(data_queue=data_queue)),  # New API endpoint
+        ],
+        settings={"data_queue": data_queue}  # Add data_queue to settings
     )
 
-def train_individual_model(predictor_model, initial_run):
+async def train_individual_model_async(predictor_model, initial_run):
+    """Asynchronously train an individual model."""
     metric_to_predict = predictor_model.metric
     pc = PrometheusConnect(
-    url=Configuration.prometheus_url,
-    headers=Configuration.prom_connect_headers,
-    disable_ssl=True,
+        url=Configuration.prometheus_url,
+        headers=Configuration.prom_connect_headers,
+        disable_ssl=True,
     )
 
     data_start_time = datetime.now() - Configuration.metric_chunk_size
@@ -155,15 +262,28 @@ def train_individual_model(predictor_model, initial_run):
     )
     return predictor_model
 
-def train_model(initial_run=False, data_queue=None):
-    """Train the machine learning model."""
-    global PREDICTOR_MODEL_LIST
-    parallelism = min(Configuration.parallelism, cpu_count())
-    _LOGGER.info(f"Training models using ProcessPool of size:{parallelism}")
-    training_partial = partial(train_individual_model, initial_run=initial_run)
-    with Pool(parallelism) as p:
-        result = p.map(training_partial, PREDICTOR_MODEL_LIST)
-    PREDICTOR_MODEL_LIST = result
+async def train_model_async(predictors, initial_run=False, data_queue=None):
+    """Asynchronously train the machine learning models."""
+    if not predictors:
+        _LOGGER.info("No new metrics to train. Skipping training.")
+        return
+
+    _LOGGER.info(f"Training models asynchronously with asyncio")
+    
+    # Create asynchronous tasks for each predictor
+    tasks = [
+        train_individual_model_async(predictor, initial_run)
+        for predictor in predictors
+    ]
+    
+    # Run all tasks concurrently
+    result = await asyncio.gather(*tasks)
+    
+    # Update global PREDICTOR_MODEL_LIST
+    for predictor in result:
+        if predictor not in PREDICTOR_MODEL_LIST:
+            PREDICTOR_MODEL_LIST.append(predictor)
+    
     data_queue.put(PREDICTOR_MODEL_LIST)
 
 
@@ -171,8 +291,8 @@ if __name__ == "__main__":
     # Queue to share data between the tornado server and the model training
     predicted_model_queue = Queue()
 
-    # Initial run to generate metrics, before they are exposed
-    train_model(initial_run=True, data_queue=predicted_model_queue)
+    # 不进行初始模型训练，改为通过 API 添加指标训练
+    # train_model(initial_run=True, data_queue=predicted_model_queue)
 
     # Set up the tornado web app
     app = make_app(predicted_model_queue)
@@ -183,7 +303,7 @@ if __name__ == "__main__":
 
     # Schedule the model training
     schedule.every(Configuration.retraining_interval_minutes).minutes.do(
-        train_model, initial_run=False, data_queue=predicted_model_queue
+        train_model_async, initial_run=False, data_queue=predicted_model_queue
     )
     _LOGGER.info(
         "Will retrain model every %s minutes", Configuration.retraining_interval_minutes

@@ -1,14 +1,14 @@
-FROM registry.access.redhat.com/ubi8/python-38:latest
+# 使用 Python 3.12 作为基础镜像
+FROM python:3.12-slim
 
-# Add application sources to a directory that the assemble script expects them
-# and set permissions so that the container runs without root access
-USER 0
-ADD . /tmp/src
-RUN /usr/bin/fix-permissions /tmp/src
-USER 1001
+# 设置工作目录
+WORKDIR /app
 
-# Install the dependencies
-RUN /usr/libexec/s2i/assemble
+# 添加应用程序源代码到工作目录
+ADD . /app
 
-# Set the default command for the resulting image
-CMD /usr/libexec/s2i/run
+# 安装依赖
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 设置默认命令
+CMD ["python", "app.py"]

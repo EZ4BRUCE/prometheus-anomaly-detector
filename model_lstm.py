@@ -21,12 +21,13 @@ class MetricPredictor:
     model = None
     predicted_df = None
     metric = None
+    label_config_with_matric_name = None
 
-    def __init__(self, metric, rolling_data_window_size="10d", number_of_feature=10, validation_ratio=0.2,
+    def __init__(self, metric, label_config_with_matric_name, rolling_data_window_size="10d", number_of_feature=10, validation_ratio=0.2,
                  parameter_tuning=True):
         """Initialize the Metric object."""
         self.metric = Metric(metric, rolling_data_window_size)
-
+        self.label_config_with_matric_name = label_config_with_matric_name
         self.number_of_features = number_of_feature
         self.scalar = MinMaxScaler(feature_range=(0, 1))
         self.parameter_tuning = parameter_tuning

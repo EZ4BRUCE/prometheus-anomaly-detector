@@ -1,1 +1,5 @@
-FLT_PROM_URL=http://localhost:8080/prometheus FLT_METRICS_LIST=up python app.py
+FLT_PROM_URL=http://localhost:8080/prometheus python app.py
+
+curl -X POST http://localhost:8789/add_metric \
+     -H "Content-Type: application/json" \
+     -d '{"metric": "up", "model": "prophet"}'
