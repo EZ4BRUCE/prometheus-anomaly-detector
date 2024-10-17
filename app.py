@@ -1,4 +1,5 @@
 """docstring for packages."""
+
 import time
 import os
 import logging
@@ -11,6 +12,7 @@ import tornado.ioloop
 import tornado.web
 from prometheus_client import Gauge, generate_latest, REGISTRY
 from prometheus_api_client import PrometheusConnect, Metric
+from prometheus_api_client.utils import parse_datetime, parse_timedelta
 from configuration import Configuration
 import model_prophet
 import model_fourier
@@ -18,9 +20,25 @@ import model_lstm
 import schedule
 import asyncio
 import json
+import model_sarima_test
 
 # Set up logging
 _LOGGER = logging.getLogger(__name__)
+_LOGGER.setLevel(logging.INFO)
+
+# Create a console handler
+console_handler = logging.StreamHandler()
+
+# Create a formatter that includes the line number
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s [%(filename)s:%(lineno)d]"
+)
+
+# Set the formatter for the handler
+console_handler.setFormatter(formatter)
+
+# Add the handler to the logger
+_LOGGER.addHandler(console_handler)
 
 METRICS_LIST = Configuration.metrics_list
 
@@ -94,8 +112,10 @@ class MainHandler(tornado.web.RequestHandler):
             # and publish the values for each of them
             for column_name in list(prediction.columns):
                 GAUGE_DICT[metric_name].labels(
-                    **predictor_model.metric.label_config, value_type=column_name,
-                    model_name=predictor_model.model_name, metric_type="anomaly-detection"
+                    **predictor_model.metric.label_config,
+                    value_type=column_name,
+                    model_name=predictor_model.model_name,
+                    metric_type="anomaly-detection",
                 ).set(prediction[column_name][0])
 
             # Calculate for an anomaly (can be different for different models)
@@ -109,8 +129,10 @@ class MainHandler(tornado.web.RequestHandler):
             # create a new time series that has value_type=anomaly
             # this value is 1 if an anomaly is found 0 if not
             GAUGE_DICT[metric_name].labels(
-                **predictor_model.metric.label_config, value_type="anomaly",
-                model_name=predictor_model.model_name, metric_type="anomaly-detection"
+                **predictor_model.metric.label_config,
+                value_type="anomaly",
+                model_name=predictor_model.model_name,
+                metric_type="anomaly-detection",
             ).set(anomaly)
 
         self.write(generate_latest(REGISTRY).decode("utf-8"))
@@ -132,13 +154,20 @@ class AddMetricHandler(tornado.web.RequestHandler):
             new_metric = data.get("metric")
             model_name = data.get("model")
             window_size = data.get("window_size")
-            _LOGGER.info(f"Received new metric for training: {new_metric}, model: {model_name}")
+
+            time_window = parse_timedelta("now", window_size)
+
+            _LOGGER.info(
+                f"Received new metric for training: {new_metric}, model: {model_name}"
+            )
 
             # Get current metric value
             metric_init = pc.get_current_metric_value(metric_name=new_metric)
 
             for predictor in PREDICTOR_MODEL_LIST:
-                _LOGGER.info(f"current {predictor.metric.metric_name} predictor: {predictor.model_name} {predictor.metric.label_config}")
+                _LOGGER.info(
+                    f"current {predictor.metric.metric_name} predictor: {predictor.model_name} {predictor.metric.label_config}"
+                )
 
             # List to store newly added predictors
             new_predictors = []
@@ -146,27 +175,29 @@ class AddMetricHandler(tornado.web.RequestHandler):
             for m in metric_init:
                 # Check if the unique_metric already exists in PREDICTOR_MODEL_LIST
                 _LOGGER.info(f"get unique_metric: {m}")
-                
+
                 label_config_with_matric_name = m["metric"]
                 metric_name = label_config_with_matric_name["__name__"]
-                
+
                 is_initial_run = not any(
-                    predictor.metric.metric_name == metric_name and
-                    predictor.label_config_with_matric_name == label_config_with_matric_name
+                    predictor.metric.metric_name == metric_name
+                    and predictor.label_config_with_matric_name
+                    == label_config_with_matric_name
                     for predictor in PREDICTOR_MODEL_LIST
                 )
-                
 
                 # If it doesn't exist, add a new predictor to the list
                 if is_initial_run:
-                    if window_size==None:
-                        window_size = Configuration.rolling_training_window_size
-                    new_predictor = self.new_model_predictor(m, label_config_with_matric_name, model_name, window_size)
+                    if time_window == None:
+                        time_window = Configuration.rolling_training_window_size
+                    new_predictor = self.new_model_predictor(
+                        m, label_config_with_matric_name, model_name, time_window
+                    )
                     new_predictors.append(new_predictor)
                     PREDICTOR_MODEL_LIST.append(new_predictor)
-                    
+
                     unique_metric = new_predictor.metric
-                    
+
                     # Update GAUGE_DICT
                     label_list = list(unique_metric.label_config.keys())
                     label_list.append("value_type")
@@ -182,11 +213,27 @@ class AddMetricHandler(tornado.web.RequestHandler):
             # Train only the newly added predictors
             if new_predictors:
                 # Schedule the training as a background task
-                asyncio.create_task(train_model_async(new_predictors, initial_run=True, data_queue=self.data_queue))
-                self.write({"status": "success", "message": f"Metric [{new_metric}] added and training started."})
+                asyncio.create_task(
+                    train_model_async(
+                        new_predictors, initial_run=True, data_queue=self.data_queue
+                    )
+                )
+                self.write(
+                    {
+                        "status": "success",
+                        "message": f"Metric [{new_metric}] added and training started.",
+                    }
+                )
             else:
-                _LOGGER.info(f"Metric [{new_metric}] predictor already exists. Skipping training.")
-                self.write({"status": "success", "message": f"Metric [{new_metric}]'s predictor already exists. Skipping training."})
+                _LOGGER.info(
+                    f"Metric [{new_metric}] predictor already exists. Skipping training."
+                )
+                self.write(
+                    {
+                        "status": "success",
+                        "message": f"Metric [{new_metric}]'s predictor already exists. Skipping training.",
+                    }
+                )
 
         except json.JSONDecodeError:
             self.set_status(400)
@@ -195,7 +242,13 @@ class AddMetricHandler(tornado.web.RequestHandler):
             _LOGGER.error(f"Error adding new metric: {str(e)}")
             self.write({"status": "error", "message": str(e)})
 
-    def new_model_predictor(self, unique_metric,label_config_with_matric_name, model_name, rolling_data_window_size):
+    def new_model_predictor(
+        self,
+        unique_metric,
+        label_config_with_matric_name,
+        model_name,
+        rolling_data_window_size,
+    ):
         if model_name == "prophet":
             return model_prophet.MetricPredictor(
                 unique_metric,
@@ -214,10 +267,17 @@ class AddMetricHandler(tornado.web.RequestHandler):
                 label_config_with_matric_name,
                 rolling_data_window_size=rolling_data_window_size,
             )
+        elif model_name == "sarima":
+            # still in test
+            return model_sarima_test.MetricPredictor(
+                unique_metric,
+                label_config_with_matric_name,
+                rolling_data_window_size=rolling_data_window_size,
+            )
         else:
             raise ValueError(f"Invalid model name: {model_name}")
-        
-        
+
+
 def make_app(data_queue):
     """Initialize the tornado web app."""
     _LOGGER.info("Initializing Tornado Web App")
@@ -225,10 +285,15 @@ def make_app(data_queue):
         [
             (r"/metrics", MainHandler, dict(data_queue=data_queue)),
             (r"/", MainHandler, dict(data_queue=data_queue)),
-            (r"/add_metric", AddMetricHandler, dict(data_queue=data_queue)),  # New API endpoint
+            (
+                r"/add_metric",
+                AddMetricHandler,
+                dict(data_queue=data_queue),
+            ),  # New API endpoint
         ],
-        settings={"data_queue": data_queue}  # Add data_queue to settings
+        settings={"data_queue": data_queue},  # Add data_queue to settings
     )
+
 
 async def train_individual_model_async(predictor_model, initial_run):
     """Asynchronously train an individual model."""
@@ -241,9 +306,7 @@ async def train_individual_model_async(predictor_model, initial_run):
 
     data_start_time = datetime.now() - Configuration.metric_chunk_size
     if initial_run:
-        data_start_time = (
-            datetime.now() - Configuration.rolling_training_window_size
-        )
+        data_start_time = datetime.now() - Configuration.rolling_training_window_size
 
     # Download new metric data from prometheus
     new_metric_data = pc.get_metric_range_data(
@@ -255,8 +318,7 @@ async def train_individual_model_async(predictor_model, initial_run):
 
     # Train the new model
     start_time = datetime.now()
-    predictor_model.train(
-            new_metric_data, Configuration.retraining_interval_minutes)
+    predictor_model.train(new_metric_data, Configuration.retraining_interval_minutes)
 
     _LOGGER.info(
         "Total Training time taken = %s, for metric: %s %s",
@@ -266,6 +328,7 @@ async def train_individual_model_async(predictor_model, initial_run):
     )
     return predictor_model
 
+
 async def train_model_async(predictors, initial_run=False, data_queue=None):
     """Asynchronously train the machine learning models."""
     if not predictors:
@@ -273,21 +336,20 @@ async def train_model_async(predictors, initial_run=False, data_queue=None):
         return
 
     _LOGGER.info(f"Training models asynchronously with asyncio")
-    
+
     # Create asynchronous tasks for each predictor
     tasks = [
-        train_individual_model_async(predictor, initial_run)
-        for predictor in predictors
+        train_individual_model_async(predictor, initial_run) for predictor in predictors
     ]
-    
+
     # Run all tasks concurrently
     result = await asyncio.gather(*tasks)
-    
+
     # Update global PREDICTOR_MODEL_LIST
     for predictor in result:
         if predictor not in PREDICTOR_MODEL_LIST:
             PREDICTOR_MODEL_LIST.append(predictor)
-    
+
     data_queue.put(PREDICTOR_MODEL_LIST)
 
 

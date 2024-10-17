@@ -2,8 +2,7 @@
 import logging
 from prometheus_api_client import Metric
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.layers import LSTM
+from tensorflow.keras.layers import Dense, LSTM, Input
 
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -53,7 +52,9 @@ class MetricPredictor:
     def get_model(self, lstm_cell_count, dense_cell_count):
         """Build the model."""
         model = Sequential()
-        model.add(LSTM(64, return_sequences=True, input_shape=(1, self.number_of_features)))
+        # Use Input layer to define the input shape
+        model.add(Input(shape=(1, self.number_of_features)))
+        model.add(LSTM(64, return_sequences=True))
         model.add(LSTM(lstm_cell_count))
         model.add(Dense(dense_cell_count))
         model.add(Dense(1))
