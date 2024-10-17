@@ -21,24 +21,28 @@ import schedule
 import asyncio
 import json
 import model_sarima_test
+import re
+from pprint import pformat
 
 # Set up logging
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.INFO)
 
-# Create a console handler
-console_handler = logging.StreamHandler()
+# Check if handlers are already added to avoid duplicates
+if not _LOGGER.hasHandlers():
+    # Create a console handler
+    console_handler = logging.StreamHandler()
 
-# Create a formatter that includes the line number
-formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s [%(filename)s:%(lineno)d]"
-)
+    # Create a formatter that includes the line number
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s [%(filename)s:%(lineno)d]"
+    )
 
-# Set the formatter for the handler
-console_handler.setFormatter(formatter)
+    # Set the formatter for the handler
+    console_handler.setFormatter(formatter)
 
-# Add the handler to the logger
-_LOGGER.addHandler(console_handler)
+    # Add the handler to the logger
+    _LOGGER.addHandler(console_handler)
 
 METRICS_LIST = Configuration.metrics_list
 
@@ -88,14 +92,26 @@ class MainHandler(tornado.web.RequestHandler):
         """Check if new predicted values are available in the queue before the get request."""
         try:
             model_list = data_queue.get_nowait()
-            self.settings["model_list"] = model_list
+            if model_list:
+                self.settings["model_list"] = model_list
+            else:
+                _LOGGER.warning("Model list is empty.")
+                self.settings["model_list"] = []
         except EmptyQueueException:
-            pass
+            _LOGGER.warning("Data queue is empty.")
+            self.settings["model_list"] = []
 
     async def get(self):
         """Fetch and publish metric values asynchronously."""
         # update metric value on every request and publish the metric
-        for predictor_model in self.settings["model_list"]:
+        model_list = self.settings.get("model_list", [])
+        for predictor_model in model_list:
+            
+            # Check if predictor_model and its metric are valid
+            if predictor_model is None or predictor_model.metric is None:
+                _LOGGER.error("Invalid predictor_model or metric is None.")
+                continue
+
             # get the current metric value so that it can be compared with the
             # predicted values
             current_metric_value = Metric(
@@ -116,14 +132,14 @@ class MainHandler(tornado.web.RequestHandler):
                     value_type=column_name,
                     model_name=predictor_model.model_name,
                     metric_type="anomaly-detection",
-                ).set(prediction[column_name][0])
+                ).set(prediction[column_name].iloc[0])
 
             # Calculate for an anomaly (can be different for different models)
             anomaly = 1
             if (
-                current_metric_value.metric_values["y"][0] < prediction["yhat_upper"][0]
+                current_metric_value.metric_values["y"].iloc[0] < prediction["yhat_upper"].iloc[0]
             ) and (
-                current_metric_value.metric_values["y"][0] > prediction["yhat_lower"][0]
+                current_metric_value.metric_values["y"].iloc[0] > prediction["yhat_lower"].iloc[0]
             ):
                 anomaly = 0
             # create a new time series that has value_type=anomaly
@@ -151,9 +167,7 @@ class AddMetricHandler(tornado.web.RequestHandler):
         try:
             # Parse JSON body
             data = json.loads(self.request.body)
-            new_metric = data.get("metric")
-            model_name = data.get("model")
-            window_size = data.get("window_size")
+            new_metric, model_name, window_size = validate_parameters(data)
 
             time_window = parse_timedelta("now", window_size)
 
@@ -171,6 +185,8 @@ class AddMetricHandler(tornado.web.RequestHandler):
 
             # List to store newly added predictors
             new_predictors = []
+            
+            _LOGGER.info(f"got {len(metric_init)} series total")
 
             for m in metric_init:
                 # Check if the unique_metric already exists in PREDICTOR_MODEL_LIST
@@ -278,6 +294,27 @@ class AddMetricHandler(tornado.web.RequestHandler):
             raise ValueError(f"Invalid model name: {model_name}")
 
 
+def validate_parameters(data):
+    """Validate the input parameters."""
+    # Validate new_metric
+    new_metric = data.get("metric")
+    if not new_metric or not isinstance(new_metric, str):
+        raise ValueError("Invalid or missing 'metric' parameter.")
+
+    # Validate model_name
+    model_name = data.get("model")
+    valid_models = {"prophet", "fourier", "lstm", "sarima"}
+    if not model_name or model_name not in valid_models:
+        raise ValueError(f"Invalid or missing 'model' parameter. Must be one of {valid_models}.")
+
+    # Validate window_size
+    window_size = data.get("window_size")
+    if not window_size or not isinstance(window_size, str) or not re.match(r"^\d+[dhm]$", window_size):
+        raise ValueError("Invalid or missing 'window_size' parameter. Must be a string like '10d', '5h', or '30m'.")
+
+    return new_metric, model_name, window_size
+
+
 def make_app(data_queue):
     """Initialize the tornado web app."""
     _LOGGER.info("Initializing Tornado Web App")
@@ -297,6 +334,16 @@ def make_app(data_queue):
 
 async def train_individual_model_async(predictor_model, initial_run):
     """Asynchronously train an individual model."""
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, train_model, predictor_model, initial_run)
+    except Exception as e:
+        _LOGGER.error(f"Error training model: {str(e)}")
+        return None
+
+
+def train_model(predictor_model, initial_run):
+    """Train the model in a separate thread."""
     metric_to_predict = predictor_model.metric
     pc = PrometheusConnect(
         url=Configuration.prometheus_url,
@@ -347,7 +394,7 @@ async def train_model_async(predictors, initial_run=False, data_queue=None):
 
     # Update global PREDICTOR_MODEL_LIST
     for predictor in result:
-        if predictor not in PREDICTOR_MODEL_LIST:
+        if predictor is not None and predictor not in PREDICTOR_MODEL_LIST:
             PREDICTOR_MODEL_LIST.append(predictor)
 
     data_queue.put(PREDICTOR_MODEL_LIST)
@@ -381,3 +428,4 @@ if __name__ == "__main__":
 
     # join the server process in case the main process ends
     server_process.join()
+

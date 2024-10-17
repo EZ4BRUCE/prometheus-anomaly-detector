@@ -26,7 +26,7 @@ class MetricPredictor:
 
     def train(self, metric_data=None, prediction_duration=15):
         """Train the Prophet model and store the predictions in predicted_df."""
-        prediction_freq = "1MIN"
+        prediction_freq = "1min"  # Use lowercase 'min'
         # convert incoming metric to Metric Object
         if metric_data:
             # because the rolling_data_window_size is set, this df should not bloat
@@ -47,7 +47,7 @@ class MetricPredictor:
         self.model.fit(self.metric.metric_values)
         future = self.model.make_future_dataframe(
             periods=int(prediction_duration),
-            freq=prediction_freq,
+            freq=prediction_freq,  # Updated frequency
             include_history=False,
         )
         forecast = self.model.predict(future)
