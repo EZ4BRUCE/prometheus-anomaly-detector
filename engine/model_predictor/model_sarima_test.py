@@ -3,11 +3,11 @@ import pandas as pd
 import numpy as np
 from prometheus_api_client import Metric
 from statsmodels.tsa.statespace.sarimax import SARIMAX
-
+from engine.model_predictor.model_predictor import ModelPredictor
 # Set up logging
 _LOGGER = logging.getLogger(__name__)
 
-class MetricPredictor:
+class SarimaPredictor(ModelPredictor):
     """SARIMA model for time series forecasting."""
 
     model_name = "sarima"

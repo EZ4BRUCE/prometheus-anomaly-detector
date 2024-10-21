@@ -4,12 +4,12 @@ import logging
 import pandas
 from prophet import Prophet
 from prometheus_api_client import Metric
-
+from engine.model_predictor.model_predictor import ModelPredictor
 # Set up logging
 _LOGGER = logging.getLogger(__name__)
 
 # 模型对象，实现了他就可以新加一个模型
-class MetricPredictor:
+class ProphetPredictor(ModelPredictor):
     """docstring for Predictor."""
 
     model_name = "prophet"

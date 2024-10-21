@@ -5,12 +5,12 @@ import pandas as pd
 import numpy as np
 from prometheus_api_client import Metric
 from numpy import fft
-
+from engine.model_predictor.model_predictor import ModelPredictor
 # Set up logging
 _LOGGER = logging.getLogger(__name__)
 
 
-class MetricPredictor:
+class FourierPredictor(ModelPredictor):
     """docstring for Predictor."""
 
     model_name = "fourier"

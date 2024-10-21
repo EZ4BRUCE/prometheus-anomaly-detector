@@ -14,14 +14,16 @@ from prometheus_client import Gauge, generate_latest, REGISTRY
 from prometheus_api_client import PrometheusConnect, Metric
 from prometheus_api_client.utils import parse_datetime, parse_timedelta
 from configuration import Configuration
-import model_prophet
-import model_fourier
-import model_lstm
+import engine.model_predictor.model_prophet as prophet
+import engine.model_predictor.model_fourier as fourier
+import engine.model_predictor.model_lstm as lstm
+import engine.model_predictor.model_sarima_test as sarima_test
+from engine.model_predictor.predictor import ModelPredictor
 import schedule
 import asyncio
 import json
-import model_sarima_test
 import re
+
 from pprint import pformat
 
 # Set up logging
@@ -105,7 +107,7 @@ class MainHandler(tornado.web.RequestHandler):
         model_list = self.settings.get("model_list", [])
         _LOGGER.debug("model_list: %s", model_list)
         for predictor_model in model_list:
-            
+
             # Check if predictor_model and its metric are valid
             if predictor_model is None or predictor_model.metric is None:
                 _LOGGER.error("Invalid predictor_model or metric is None.")
@@ -122,8 +124,7 @@ class MainHandler(tornado.web.RequestHandler):
 
             metric_name = predictor_model.metric.metric_name
             prediction = predictor_model.predict_value(datetime.now())
-            
-            
+
             # 将 _labelnames 转换为集合
             expected_labels = set(GAUGE_DICT[metric_name]._labelnames)
             # 将 public_labels_perdicted 的键转换为集合
@@ -134,58 +135,59 @@ class MainHandler(tornado.web.RequestHandler):
 
             if provided_labels != expected_labels:
                 # FIXME 如果label_config 的label不同，则需要修改，目前跳过
-                _LOGGER.warning("current series' label_config is different from GAUGE_DICT's label")
-                
+                _LOGGER.warning(
+                    "current series' label_config is different from GAUGE_DICT's label"
+                )
+
                 # 找出缺失的标签和多余的标签
                 missing_labels = expected_labels - provided_labels
                 extra_labels = provided_labels - expected_labels
-                
+
                 # 打印期望的标签和提供的标签
                 _LOGGER.warning("Expected labels: %s", expected_labels)
                 _LOGGER.warning("Provided labels: %s", provided_labels)
-                
+
                 _LOGGER.warning("Missing labels: %s", missing_labels)
                 _LOGGER.warning("Extra labels: %s", extra_labels)
-                
+
                 continue
 
             # Check for all the columns available in the prediction
             # and publish the values for each of them
             for column_name in list(prediction.columns):
-                
-                public_labels_perdicted={
+
+                public_labels_perdicted = {
                     **predictor_model.metric.label_config,
                     "value_type": column_name,
                     "model_name": predictor_model.model_name,
-                    "metric_type": "anomaly-detection"
+                    "metric_type": "anomaly-detection",
                 }
 
-                
-                GAUGE_DICT[metric_name].labels(
-                    **public_labels_perdicted
-                ).set(prediction[column_name].iloc[0])
+                GAUGE_DICT[metric_name].labels(**public_labels_perdicted).set(
+                    prediction[column_name].iloc[0]
+                )
 
             # Calculate for an anomaly (can be different for different models)
             anomaly = 1
             if (
-                current_metric_value.metric_values["y"].iloc[0] < prediction["yhat_upper"].iloc[0]
+                current_metric_value.metric_values["y"].iloc[0]
+                < prediction["yhat_upper"].iloc[0]
             ) and (
-                current_metric_value.metric_values["y"].iloc[0] > prediction["yhat_lower"].iloc[0]
+                current_metric_value.metric_values["y"].iloc[0]
+                > prediction["yhat_lower"].iloc[0]
             ):
                 anomaly = 0
-                
-            public_labels_anomaly={
+
+            public_labels_anomaly = {
                 **predictor_model.metric.label_config,
                 "value_type": "anomaly",
                 "model_name": predictor_model.model_name,
                 "metric_type": "anomaly-detection",
             }
-            
+
             # create a new time series that has value_type=anomaly
             # this value is 1 if an anomaly is found 0 if not
-            GAUGE_DICT[metric_name].labels(
-                **public_labels_anomaly
-            ).set(anomaly)
+            GAUGE_DICT[metric_name].labels(**public_labels_anomaly).set(anomaly)
 
         self.write(generate_latest(REGISTRY).decode("utf-8"))
         self.set_header("Content-Type", "text; charset=utf-8")
@@ -221,9 +223,9 @@ class AddMetricHandler(tornado.web.RequestHandler):
 
             # List to store newly added predictors
             new_predictors = []
-            
+
             _LOGGER.info(f"got {len(metric_init)} series total")
-            
+
             if len(metric_init) == 0:
                 self.write(
                     {
@@ -310,28 +312,28 @@ class AddMetricHandler(tornado.web.RequestHandler):
         label_config_with_matric_name,
         model_name,
         rolling_data_window_size,
-    ):
+    ) -> ModelPredictor:
         if model_name == "prophet":
-            return model_prophet.MetricPredictor(
+            return prophet.ProphetPredictor(
                 unique_metric,
                 label_config_with_matric_name,
                 rolling_data_window_size=rolling_data_window_size,
             )
         elif model_name == "fourier":
-            return model_fourier.MetricPredictor(
+            return fourier.FourierPredictor(
                 unique_metric,
                 label_config_with_matric_name,
                 rolling_data_window_size=rolling_data_window_size,
             )
         elif model_name == "lstm":
-            return model_lstm.MetricPredictor(
+            return lstm.LstmPredictor(
                 unique_metric,
                 label_config_with_matric_name,
                 rolling_data_window_size=rolling_data_window_size,
             )
         elif model_name == "sarima":
             # still in test
-            return model_sarima_test.MetricPredictor(
+            return sarima_test.SarimaPredictor(
                 unique_metric,
                 label_config_with_matric_name,
                 rolling_data_window_size=rolling_data_window_size,
@@ -351,12 +353,20 @@ def validate_parameters(data):
     model_name = data.get("model")
     valid_models = {"prophet", "fourier", "lstm", "sarima"}
     if not model_name or model_name not in valid_models:
-        raise ValueError(f"Invalid or missing 'model' parameter. Must be one of {valid_models}.")
+        raise ValueError(
+            f"Invalid or missing 'model' parameter. Must be one of {valid_models}."
+        )
 
     # Validate window_size
     window_size = data.get("window_size")
-    if not window_size or not isinstance(window_size, str) or not re.match(r"^\d+[dhm]$", window_size):
-        raise ValueError("Invalid or missing 'window_size' parameter. Must be a string like '10d', '5h', or '30m'.")
+    if (
+        not window_size
+        or not isinstance(window_size, str)
+        or not re.match(r"^\d+[dhm]$", window_size)
+    ):
+        raise ValueError(
+            "Invalid or missing 'window_size' parameter. Must be a string like '10d', '5h', or '30m'."
+        )
 
     return new_metric, model_name, window_size
 
@@ -378,17 +388,21 @@ def make_app(data_queue):
     )
 
 
-async def train_individual_model_async(predictor_model, initial_run):
+async def train_individual_model_async(
+    predictor_model: ModelPredictor, initial_run: bool
+):
     """Asynchronously train an individual model."""
     try:
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, train_model, predictor_model, initial_run)
+        return await loop.run_in_executor(
+            None, train_model, predictor_model, initial_run
+        )
     except Exception as e:
         _LOGGER.error(f"Error training model: {str(e)}")
         return None
 
 
-def train_model(predictor_model, initial_run):
+def train_model(predictor_model: ModelPredictor, initial_run: bool):
     """Train the model in a separate thread."""
     metric_to_predict = predictor_model.metric
     pc = PrometheusConnect(
@@ -422,7 +436,9 @@ def train_model(predictor_model, initial_run):
     return predictor_model
 
 
-async def train_model_async(predictors, initial_run=False, data_queue=None):
+async def train_model_async(
+    predictors: list[ModelPredictor], initial_run=False, data_queue=None
+):
     """Asynchronously train the machine learning models."""
     if not predictors:
         _LOGGER.info("No new metrics to train. Skipping training.")
@@ -474,5 +490,3 @@ if __name__ == "__main__":
 
     # join the server process in case the main process ends
     server_process.join()
-
-

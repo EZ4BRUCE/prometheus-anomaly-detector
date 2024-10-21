@@ -3,6 +3,8 @@ import logging
 from prometheus_api_client import Metric
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, LSTM, Input
+from engine.model_predictor.model_predictor import ModelPredictor
+
 
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -12,7 +14,7 @@ import pandas as pd
 _LOGGER = logging.getLogger(__name__)
 
 
-class MetricPredictor:
+class LstmPredictor(ModelPredictor):
     """docstring for Predictor."""
 
     model_name = "lstm"
