@@ -96,15 +96,14 @@ class MainHandler(tornado.web.RequestHandler):
                 self.settings["model_list"] = model_list
             else:
                 _LOGGER.warning("Model list is empty.")
-                self.settings["model_list"] = []
         except EmptyQueueException:
             _LOGGER.warning("Data queue is empty.")
-            self.settings["model_list"] = []
 
     async def get(self):
         """Fetch and publish metric values asynchronously."""
         # update metric value on every request and publish the metric
         model_list = self.settings.get("model_list", [])
+        _LOGGER.debug("model_list: %s", model_list)
         for predictor_model in model_list:
             
             # Check if predictor_model and its metric are valid
@@ -123,15 +122,47 @@ class MainHandler(tornado.web.RequestHandler):
 
             metric_name = predictor_model.metric.metric_name
             prediction = predictor_model.predict_value(datetime.now())
+            
+            
+            # 将 _labelnames 转换为集合
+            expected_labels = set(GAUGE_DICT[metric_name]._labelnames)
+            # 将 public_labels_perdicted 的键转换为集合
+            provided_labels = set(predictor_model.metric.label_config.keys())
+            provided_labels.add("value_type")
+            provided_labels.add("model_name")
+            provided_labels.add("metric_type")
+
+            if provided_labels != expected_labels:
+                # FIXME 如果label_config 的label不同，则需要修改，目前跳过
+                _LOGGER.warning("current series' label_config is different from GAUGE_DICT's label")
+                
+                # 找出缺失的标签和多余的标签
+                missing_labels = expected_labels - provided_labels
+                extra_labels = provided_labels - expected_labels
+                
+                # 打印期望的标签和提供的标签
+                _LOGGER.warning("Expected labels: %s", expected_labels)
+                _LOGGER.warning("Provided labels: %s", provided_labels)
+                
+                _LOGGER.warning("Missing labels: %s", missing_labels)
+                _LOGGER.warning("Extra labels: %s", extra_labels)
+                
+                continue
 
             # Check for all the columns available in the prediction
             # and publish the values for each of them
             for column_name in list(prediction.columns):
-                GAUGE_DICT[metric_name].labels(
+                
+                public_labels_perdicted={
                     **predictor_model.metric.label_config,
-                    value_type=column_name,
-                    model_name=predictor_model.model_name,
-                    metric_type="anomaly-detection",
+                    "value_type": column_name,
+                    "model_name": predictor_model.model_name,
+                    "metric_type": "anomaly-detection"
+                }
+
+                
+                GAUGE_DICT[metric_name].labels(
+                    **public_labels_perdicted
                 ).set(prediction[column_name].iloc[0])
 
             # Calculate for an anomaly (can be different for different models)
@@ -142,13 +173,18 @@ class MainHandler(tornado.web.RequestHandler):
                 current_metric_value.metric_values["y"].iloc[0] > prediction["yhat_lower"].iloc[0]
             ):
                 anomaly = 0
+                
+            public_labels_anomaly={
+                **predictor_model.metric.label_config,
+                "value_type": "anomaly",
+                "model_name": predictor_model.model_name,
+                "metric_type": "anomaly-detection",
+            }
+            
             # create a new time series that has value_type=anomaly
             # this value is 1 if an anomaly is found 0 if not
             GAUGE_DICT[metric_name].labels(
-                **predictor_model.metric.label_config,
-                value_type="anomaly",
-                model_name=predictor_model.model_name,
-                metric_type="anomaly-detection",
+                **public_labels_anomaly
             ).set(anomaly)
 
         self.write(generate_latest(REGISTRY).decode("utf-8"))
@@ -187,6 +223,16 @@ class AddMetricHandler(tornado.web.RequestHandler):
             new_predictors = []
             
             _LOGGER.info(f"got {len(metric_init)} series total")
+            
+            if len(metric_init) == 0:
+                self.write(
+                    {
+                        "status": "success",
+                        "message": f"Metric [{new_metric}] no series to add.",
+                    }
+                )
+                _LOGGER.info("no series to add")
+                return
 
             for m in metric_init:
                 # Check if the unique_metric already exists in PREDICTOR_MODEL_LIST
@@ -201,7 +247,6 @@ class AddMetricHandler(tornado.web.RequestHandler):
                     == label_config_with_matric_name
                     for predictor in PREDICTOR_MODEL_LIST
                 )
-
                 # If it doesn't exist, add a new predictor to the list
                 if is_initial_run:
                     if time_window == None:
@@ -225,6 +270,7 @@ class AddMetricHandler(tornado.web.RequestHandler):
                             new_predictor.model_description,
                             labelnames=label_list,
                         )
+                    # FIXME 问题，每个 label_config 的label可能不同，在实验中，有些tps没有io owner的label或者claimset
 
             # Train only the newly added predictors
             if new_predictors:
@@ -428,4 +474,5 @@ if __name__ == "__main__":
 
     # join the server process in case the main process ends
     server_process.join()
+
 

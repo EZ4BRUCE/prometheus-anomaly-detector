@@ -19,7 +19,7 @@ class Configuration:
     """docstring for Configuration."""
 
     # url for the prometheus host
-    prometheus_url = os.getenv("FLT_PROM_URL")
+    prometheus_url = os.getenv("FLT_PROM_URL", "http://localhost:9090")
 
     # any headers that need to be passed while connecting to the prometheus host
     prom_connect_headers = None

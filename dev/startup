@@ -1,8 +1,10 @@
 FLT_PROM_URL=http://localhost:8080/prometheus python app.py
+FLT_PROM_URL=http://localhost:9090 python app.py
 
 curl -X POST http://localhost:8789/add_metric \
      -H "Content-Type: application/json" \
-     -d '{"metric": "up", "model": "prophet", "window_size": "10d"}'
+     -d '{"metric": "sql_transaction_total{account=\"sys\"}", "model": "prophet", "window_size": "10d"}'
+
 
 curl -X POST http://localhost:8789/add_metric \
      -H "Content-Type: application/json" \
@@ -11,3 +13,7 @@ curl -X POST http://localhost:8789/add_metric \
 container_memory_usage_total_bytes
 
 curl http://localhost:8789 
+
+需要支持每个指标粒度重新训练，定时轮训所有预测机看看上次训练时间和当前对比，看是否需要重新训练
+
+kdu && kubectl port-forward -n mo-ob svc/mo-ob-opensource-kube-prom-prometheus 9090:9090
