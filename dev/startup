@@ -3,7 +3,20 @@ FLT_PROM_URL=http://localhost:9090 python app.py
 
 curl -X POST http://localhost:8789/add_metric \
      -H "Content-Type: application/json" \
-     -d '{"metric": "sql_transaction_total{account=\"sys\"}", "model": "prophet", "window_size": "10d"}'
+     -d '{"metric": "instance:node_cpu:rate:sum{instance=\"10.2.214.115:9100\"}", "model": "prophet", "window_size": "10d"}'
+
+curl -X POST http://localhost:8789/add_metric \
+     -H "Content-Type: application/json" \
+     -d '{"metric": "instance:node_cpu:rate:sum{instance=\"10.2.214.115:9100\"}", "model": "lstm", "window_size": "10d"}'
+
+curl -X POST http://localhost:8789/add_metric \
+     -H "Content-Type: application/json" \
+     -d '{"metric": "instance:node_cpu:rate:sum{instance=\"10.2.214.115:9100\"}", "model": "fourier", "window_size": "10d"}'
+
+curl -X POST http://localhost:8789/add_metric \
+     -H "Content-Type: application/json" \
+     -d '{"metric": "instance:node_cpu:rate:sum{instance=\"10.2.214.98:9100\"}", "model": "sarima", "window_size": "10d"}'
+
 
 
 curl -X POST http://localhost:8789/add_metric \

@@ -18,6 +18,8 @@ _LOGGER = logging.getLogger(__name__)
 class Configuration:
     """docstring for Configuration."""
 
+    cluster_mode = os.getenv("FLT_CLUSTER_MODE", "False") == "True"
+
     # url for the prometheus host
     prometheus_url = os.getenv("FLT_PROM_URL", "http://localhost:9090")
 

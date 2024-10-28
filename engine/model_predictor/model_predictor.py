@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-class ModelPredictor(ABC):
+class SeriesPredictor(ABC):
     """docstring for MetricPredictor."""
 
     @abstractmethod
@@ -8,10 +8,17 @@ class ModelPredictor(ABC):
         pass
     
     @abstractmethod
-    def predict_value(self):
+    def predict(self):
+        pass
+        
+    @abstractmethod
+    def get_model_name(self):
         pass
 
     @abstractmethod
-    def retrain(self):
+    def get_model_description(self):
         pass
-        
+
+    @abstractmethod
+    def get_series_hash(self):
+        pass
