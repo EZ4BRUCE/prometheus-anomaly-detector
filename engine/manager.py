@@ -15,6 +15,15 @@ class AnalyzeManager:
         self.cluster_mode = cluster_mode
         self.analyzers = {}
         self.lock = threading.Lock()
+        
+    def delete_metric(self, metric_promql: str):
+        with self.lock:
+            if metric_promql in self.analyzers:
+                self.analyzers[metric_promql].stop()
+                del self.analyzers[metric_promql]
+                self.logger.info("promql analyzer for %s deleted", metric_promql)
+            else:
+                self.logger.warning("promql analyzer for %s not found", metric_promql)
 
     def add_metric(
         self,

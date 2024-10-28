@@ -17,7 +17,7 @@ from prometheus_api_client import PrometheusConnect
 from prometheus_api_client.utils import parse_timedelta
 from copy import deepcopy
 from datetime import datetime
-
+from prometheus_client import REGISTRY
 
 CONST_METRIC_NAME_LABEL_KEY = "__name__"
 
@@ -47,6 +47,8 @@ class MetricAnalyzer:
 
     background_thread: threading.Thread = None
     stop_event: threading.Event = None
+    
+    is_stopped: bool = False
 
     def __init__(
         self,
@@ -275,6 +277,11 @@ class MetricAnalyzer:
             self.train_individual_model_async(predictor, initial_run)
             for predictor in predictors
         ]
+        
+        with self.predictor_dict_lock:
+            if self.is_stopped:
+                self.logger.info("promql analyzer for  %s already stopped", self.metric_promql)
+                return
 
         # Run all tasks concurrently
         result = await asyncio.gather(*tasks)
@@ -362,6 +369,21 @@ class MetricAnalyzer:
             time.sleep(1)
 
     def stop(self):
-        if self.stop_event is not None:
-            self.stop_event.set()
-            self.logger.info("promql analyzer for %s stopped", self.metric_promql)
+        with self.predictor_dict_lock:
+            if self.is_stopped:
+                return
+            
+            self.is_stopped = True
+            
+            if self.stop_event is not None:
+                self.stop_event.set()
+                self.logger.info("promql analyzer for %s stopped", self.metric_promql)
+
+            if self.gauge_metric is not None:
+                try:
+                    REGISTRY.unregister(self.gauge_metric)
+                    self.logger.info("gauge metric %s unregistered", self.metric_promql)
+                except KeyError:
+                    self.logger.warning("gauge metric %s not registered or already unregistered", self.metric_promql)
+                finally:
+                    self.gauge_metric = None
