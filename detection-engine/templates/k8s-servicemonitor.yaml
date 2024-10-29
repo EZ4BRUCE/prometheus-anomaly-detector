@@ -1,16 +1,14 @@
----
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: prometheus-anomaly-detector-monitor
+  name: detection-engine-monitor
 spec:
   endpoints:
-    - port: metrics
+    - port: 80
       interval: 60s
   selector:
     matchLabels:
-      operated-prometheus: 'true'
-      app: prometheus-anomaly-detector
+      app: detection-engine
   namespaceSelector:
     matchNames:
       - {{ .Release.Namespace }} # update namespace to where the service is deployed

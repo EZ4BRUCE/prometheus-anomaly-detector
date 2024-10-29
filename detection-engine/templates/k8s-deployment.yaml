@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}
+    app: heartbeat-service
+spec:
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0 # 确保在更新过程中没有不可用的 Pod
+      maxSurge: 1 # 允许在更新过程中多创建一个 Pod
+  selector:
+    matchLabels:
+      app: heartbeat-service
+  template:
+    metadata:
+      labels:
+        app: heartbeat-service
+    spec:
+      containers:
+      - command:
+        - /app/detection-engine
+        - --config
+        - /etc/configs/config.yaml
+        image: {{ .Values.image }}
+        imagePullPolicy: Always
+        name: detection-engine
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        volumeMounts:
+        - mountPath: /etc/configs
+          name: config
+      serviceAccountName: {{ .Release.Name }}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: config
+        secret:
+          secretName: {{ .Release.Name }}-{{ template "configmap.data-digest" . }}

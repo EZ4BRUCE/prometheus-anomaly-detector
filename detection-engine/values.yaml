@@ -1,0 +1,27 @@
+replicas: 1
+image: registry.cn-hangzhou.aliyuncs.com/mocloud/detection-engine:main-20241029
+resources: 
+  limits:
+    cpu: 2000m
+    memory: 4G
+  requests:
+    cpu: 2000m
+    memory: 4G
+
+detectionEngine:
+  server:
+    port: 8789
+
+  cluster_mode: False
+
+  prometheus_url: http://localhost:9090
+
+  metrics:
+    - metric: controlplane_billing_balance{has_paid_instance="1"}
+      model: prophet
+      sync_new_series_interval_seconds: 600
+      window_size: 10d
+      retraining_interval_minutes: 120
+
+
+
