@@ -2,7 +2,6 @@ import json
 import re
 import tornado.web
 from engine.manager import AnalyzeManager
-from configuration import Configuration
 
 
 class DeleteMetricHandler(tornado.web.RequestHandler):

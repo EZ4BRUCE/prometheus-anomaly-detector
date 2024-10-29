@@ -42,12 +42,12 @@ class MetricAnalyzer:
     series_label_keys: set[str] = None
     gauge_metric: Gauge = None
     # label key-value hash -> ModelPredictor
-    series_predictors: dict[str, SeriesPredictor] = None
+    series_predictors: dict[str, SeriesPredictor] = {}
     predictor_dict_lock: threading.Lock = None
 
     background_thread: threading.Thread = None
     stop_event: threading.Event = None
-    
+
     is_stopped: bool = False
 
     def __init__(
@@ -72,7 +72,6 @@ class MetricAnalyzer:
         self.model_name = model_name
         self.rolling_data_window_size = parse_timedelta("now", rolling_data_window_size)
         self.retraining_interval_minutes = retraining_interval_minutes
-        self.series_predictors = {}
         self.predictor_dict_lock = threading.Lock()
         self.stop_event = threading.Event()
         self.sync_new_series_interval_seconds = sync_new_series_interval_seconds
@@ -90,19 +89,28 @@ class MetricAnalyzer:
         return True
 
     async def predict_all_series_values(self):
-        tasks = []
 
         now = datetime.now()
 
         with self.predictor_dict_lock:
+            if len(self.series_predictors) == 0:
+                self.logger.info(
+                    "[%s] %s(id: %s) no series to predict",
+                    "analyzer",
+                    self.metric_promql,
+                    id(self),
+                )
+                return
+
             for hash, predictor in self.series_predictors.items():
                 predictor.predict(now)
 
-        # await asyncio.gather(*tasks)
-
-        self.logger.info(
-            f"all series values updated in gauge metrics for {self.metric_promql}"
-        )
+            self.logger.info(
+                "[%s] all series values updated in gauge metrics for %s(id: %s)",
+                "analyzer",
+                self.metric_promql,
+                id(self),
+            )
 
     async def check_and_retrain_predictors(self):
         """Asynchronously retrain the predictors that need updating."""
@@ -118,10 +126,14 @@ class MetricAnalyzer:
             ]
 
         if not retrain_predictors:
-            self.logger.info("No predictors need retraining at this time.")
+            self.logger.info(
+                "[%s] No predictors need retraining at this time.", "analyzer"
+            )
             return
 
-        self.logger.info(f"Retraining {len(retrain_predictors)} predictors.")
+        self.logger.info(
+            "[%s] Retraining %s predictors.", "analyzer", len(retrain_predictors)
+        )
 
         # 直接将 retrain_predictors 列表传递给 train_model_async
         await self.train_model_async(retrain_predictors, initial_run=False)
@@ -143,7 +155,9 @@ class MetricAnalyzer:
                 self.logger.info("no series to add")
                 return
 
-            self.logger.info(f"got {len(current_series)} series total")
+            self.logger.info(
+                "[%s] got %s series total", "analyzer", len(current_series)
+            )
 
             new_predictors = []
 
@@ -170,10 +184,12 @@ class MetricAnalyzer:
                 )
 
             for series in current_series:
-
                 if CONST_METRIC_NAME_LABEL_KEY not in series["metric"]:
                     raise ValueError(
-                        f"metric {series['metric']} has no {CONST_METRIC_NAME_LABEL_KEY}"
+                        "[%s] metric %s has no %s",
+                        "analyzer",
+                        series["metric"],
+                        CONST_METRIC_NAME_LABEL_KEY,
                     )
 
                 metric_name = series["metric"][CONST_METRIC_NAME_LABEL_KEY]
@@ -183,35 +199,43 @@ class MetricAnalyzer:
                 del labels[CONST_METRIC_NAME_LABEL_KEY]
 
                 if not self.same_label_keys(labels.keys()):
-                    self.logger.warning(f"label keys not match: {labels.keys()}")
+                    self.logger.warning(
+                        "[%s] label keys not match: %s", "analyzer", labels.keys()
+                    )
                     continue
 
                 series_label_hash = hash(frozenset(labels.items()))
-                if series_label_hash not in self.series_predictors:
-                    self.logger.info(f"got new series: {series}")
-                    new_predictor = self.new_model_predictor(
-                        series,
-                        series_label_hash,
-                        self.model_name,
-                        self.prometheus_url,
-                        self.gauge_metric,
-                        self.rolling_data_window_size,
-                    )
-                    new_predictors.append(new_predictor)
+                with self.predictor_dict_lock:
+                    if series_label_hash not in self.series_predictors:
+                        self.logger.info("[%s] got new series: %s", "analyzer", series)
+                        new_predictor = self.new_model_predictor(
+                            series,
+                            series_label_hash,
+                            self.model_name,
+                            self.prometheus_url,
+                            self.gauge_metric,
+                            self.rolling_data_window_size,
+                        )
+                        new_predictors.append(new_predictor)
 
             # Train only the newly added predictors
             if len(new_predictors) > 0:
                 # Schedule the training as a background task
                 self.logger.info(
-                    f"Training {len(new_predictors)} new series predictors for metric: {self.metric_promql}"
+                    "[%s] Training %s new series predictors for metric: %s",
+                    "analyzer",
+                    len(new_predictors),
+                    self.metric_promql,
                 )
                 asyncio.run(self.train_model_async(new_predictors, initial_run=True))
             else:
                 self.logger.info(
-                    f"Metric [{self.metric_name}] all series' predictors already exists. Skipping training."
+                    "[%s] Metric [%s] all series' predictors already exists. Skipping training.",
+                    "analyzer",
+                    self.metric_name,
                 )
         except Exception as e:
-            self.logger.error(f"Error syncing new series: {str(e)}")
+            self.logger.error("[%s] Error syncing new series: %s", "analyzer", str(e))
 
     def new_model_predictor(
         self,
@@ -267,20 +291,24 @@ class MetricAnalyzer:
     ):
         """Asynchronously train the machine learning models."""
         if not predictors:
-            self.logger.info("No series to train. Skipping training.")
+            self.logger.info("[%s] No series to train. Skipping training.", "analyzer")
             return
 
-        self.logger.info(f"Training models asynchronously with asyncio")
+        self.logger.info("[%s] Training models asynchronously with asyncio", "analyzer")
 
         # Create asynchronous tasks for each predictor
         tasks = [
             self.train_individual_model_async(predictor, initial_run)
             for predictor in predictors
         ]
-        
+
         with self.predictor_dict_lock:
             if self.is_stopped:
-                self.logger.info("promql analyzer for  %s already stopped", self.metric_promql)
+                self.logger.info(
+                    "[%s] promql analyzer for %s already stopped",
+                    "analyzer",
+                    self.metric_promql,
+                )
                 return
 
         # Run all tasks concurrently
@@ -288,9 +316,18 @@ class MetricAnalyzer:
 
         # Update global PREDICTOR_MODEL_LIST
         with self.predictor_dict_lock:
+            if len(result) == 0:
+                self.logger.info("[%s] no predictor trained", "analyzer")
+                return
+
             for predictor in result:
                 if predictor is not None:
                     self.series_predictors[predictor.get_series_hash()] = predictor
+                    
+
+            self.logger.info(
+                "[%s] %s predictors added", "analyzer", len(self.series_predictors)
+            )
 
     async def train_individual_model_async(
         self, predictor_model: SeriesPredictor, initial_run: bool
@@ -339,29 +376,57 @@ class MetricAnalyzer:
         )
         return predictor_model
 
-    def run(self):
+    def init_run(self):
         """Run the retrain_predictors method at regular intervals."""
         if len(self.series_predictors) == 0:
-            self.logger.info("init promql analyzer for %s", self.metric_promql)
+            self.logger.info(
+                "[%s] init promql analyzer for %s", "analyzer", self.metric_promql
+            )
             self.sync_new_series()
 
         self.logger.info(
-            f"Metric promql [{self.metric_promql}] initial training started"
+            "[%s] %s(id: %s) initial training for %d series done",
+            "analyzer",
+            self.metric_promql,
+            id(self),
+            len(self.series_predictors),
         )
+
+    def run(self):
+        """Run the retrain_predictors method at regular intervals."""
+        if len(self.series_predictors) == 0:
+            self.logger.info(
+                "[%s] init promql analyzer for %s", "analyzer", self.metric_promql
+            )
+            self.sync_new_series()
+
+        self.logger.info(
+            "[%s] %s(id: %s) initial training for %d series done",
+            "analyzer",
+            self.metric_promql,
+            id(self),
+            len(self.series_predictors),
+        )
+        
 
         # Schedule retrain_predictors to run every retraining_interval_minutes
         schedule.every(30000).seconds.do(
             lambda: asyncio.run(self.check_and_retrain_predictors())
         )
 
-        self.logger.info(f"Scheduled retrain_predictors every 30 seconds.")
+        self.logger.info(
+            "[%s] Scheduled check and retrain predictors every 30 seconds.",
+            "analyzer",
+        )
 
         schedule.every(self.sync_new_series_interval_seconds).seconds.do(
             lambda: asyncio.run(self.sync_new_series())
         )
 
         self.logger.info(
-            f"Scheduled sync_new_series every {self.sync_new_series_interval_seconds} seconds."
+            "[%s] Scheduled sync_new_series every %s seconds.",
+            "analyzer",
+            self.sync_new_series_interval_seconds,
         )
 
         while not self.stop_event.is_set():
@@ -372,18 +437,30 @@ class MetricAnalyzer:
         with self.predictor_dict_lock:
             if self.is_stopped:
                 return
-            
+
             self.is_stopped = True
-            
+
             if self.stop_event is not None:
                 self.stop_event.set()
-                self.logger.info("promql analyzer for %s stopped", self.metric_promql)
+                self.logger.info(
+                    "[%s] promql analyzer for %s stopped",
+                    "analyzer",
+                    self.metric_promql,
+                )
 
             if self.gauge_metric is not None:
                 try:
                     REGISTRY.unregister(self.gauge_metric)
-                    self.logger.info("gauge metric %s unregistered", self.metric_promql)
+                    self.logger.info(
+                        "[%s] gauge metric %s unregistered",
+                        "analyzer",
+                        self.metric_promql,
+                    )
                 except KeyError:
-                    self.logger.warning("gauge metric %s not registered or already unregistered", self.metric_promql)
+                    self.logger.warning(
+                        "[%s] gauge metric %s not registered or already unregistered",
+                        "analyzer",
+                        self.metric_promql,
+                    )
                 finally:
                     self.gauge_metric = None

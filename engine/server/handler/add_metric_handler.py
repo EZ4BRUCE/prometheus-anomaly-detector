@@ -2,7 +2,6 @@ import json
 import re
 import tornado.web
 from engine.manager import AnalyzeManager
-from configuration import Configuration
 
 
 class AddMetricHandler(tornado.web.RequestHandler):
@@ -18,7 +17,7 @@ class AddMetricHandler(tornado.web.RequestHandler):
         try:
             # Parse JSON body
             data = json.loads(self.request.body)
-            metric_promql, model_name, window_size = validate_parameters(data)
+            metric_promql, model_name, window_size, retraining_interval_minutes, sync_new_series_interval_seconds = validate_parameters(data)
 
             self.logger.info(
                 f"Received new metric for training: {metric_promql}, model: {model_name}"
@@ -27,10 +26,10 @@ class AddMetricHandler(tornado.web.RequestHandler):
             self.manager.add_metric(
                 metric_promql,
                 model_name,
-                Configuration.prometheus_url,
+                self.manager.prometheus_url,
                 window_size,
-                Configuration.retraining_interval_minutes,
-                300,
+                retraining_interval_minutes,
+                sync_new_series_interval_seconds,
             )
 
             self.write(
@@ -73,5 +72,15 @@ def validate_parameters(data):
         raise ValueError(
             "Invalid or missing 'window_size' parameter. Must be a string like '10d', '5h', or '30m'."
         )
+        
+    # Validate retraining_interval_minutes  
+    retraining_interval_minutes = data.get("retraining_interval_minutes")
+    if not retraining_interval_minutes or not isinstance(retraining_interval_minutes, int):
+        raise ValueError("Invalid or missing 'retraining_interval_minutes' parameter.")
+    
+    # Validate sync_new_series_interval_seconds
+    sync_new_series_interval_seconds = data.get("sync_new_series_interval_seconds")
+    if not sync_new_series_interval_seconds or not isinstance(sync_new_series_interval_seconds, int):
+        raise ValueError("Invalid or missing 'sync_new_series_interval_seconds' parameter.")
 
-    return new_metric, model_name, window_size
+    return new_metric, model_name, window_size, retraining_interval_minutes, sync_new_series_interval_seconds

@@ -1,0 +1,15 @@
+server:
+  port: 8789
+
+cluster_mode: False
+
+prometheus_url: http://localhost:9090
+
+metrics:
+  - metric: controlplane_billing_balance{has_paid_instance="1"}
+    model: prophet
+    sync_new_series_interval_seconds: 1200
+    window_size: 10d
+    retraining_interval_minutes: 5
+
+

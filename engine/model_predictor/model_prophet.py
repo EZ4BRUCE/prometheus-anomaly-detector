@@ -70,10 +70,11 @@ class ProphetPredictor(SeriesPredictor):
         )
 
         self.logger.info(
-            "training data range: %s - %s", self.metric.start_time, self.metric.end_time
+            "[%s] training data range: %s - %s",
+            "prophet",
+            self.metric.start_time,
+            self.metric.end_time,
         )
-        # _LOGGER.info("training data end time: %s", self.metric.end_time)
-        self.logger.debug("begin training")
 
         self.model.fit(self.metric.metric_values)
         future = self.model.make_future_dataframe(

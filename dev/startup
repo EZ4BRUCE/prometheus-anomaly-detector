@@ -3,7 +3,9 @@ FLT_PROM_URL=http://localhost:9090 python app.py
 
 curl -X POST http://localhost:8789/add_metric \
      -H "Content-Type: application/json" \
-     -d '{"metric": "instance:node_cpu:rate:sum{instance=\"10.2.214.115:9100\"}", "model": "prophet", "window_size": "10d"}'
+     -d '{"metric": "controlplane_billing_balance{has_paid_instance=\"1\"}", "model": "prophet", "window_size": "10d", "sync_new_series_interval_seconds": 1200, "retraining_interval_minutes": 5}'
+
+controlplane_billing_balance{has_paid_instance="1"}
 
 curl -X POST http://localhost:8789/add_metric \
      -H "Content-Type: application/json" \
@@ -30,3 +32,8 @@ curl http://localhost:8789
 需要支持每个指标粒度重新训练，定时轮训所有预测机看看上次训练时间和当前对比，看是否需要重新训练
 
 kdu && kubectl port-forward -n mo-ob svc/mo-ob-opensource-kube-prom-prometheus 9090:9090
+
+kdc && kubectl port-forward -n mo-ob svc/mo-ob-opensource-controlpl-prometheus 9090:9090
+
+sync有问题
+series的赋值有问题
