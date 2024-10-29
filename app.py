@@ -18,21 +18,32 @@ import argparse
 import atexit
 import requests
 
+from logfmt_logger import getLogger
+
+
 def load_config(file_path):
     with open(file_path, "r") as file:
         config = yaml.safe_load(file)
     return config
 
+
 def init_analyzers(url: str, metrics: list[dict]):
     try:
         for metric in metrics:
-            response = requests.post(url, json={
-                "metric": metric["metric"],
-                "model": metric["model"],
-                "window_size": metric["window_size"],
-                "sync_new_series_interval_seconds": metric["sync_new_series_interval_seconds"],
-                "retraining_interval_minutes": metric["retraining_interval_minutes"],
-            })
+            response = requests.post(
+                url,
+                json={
+                    "metric": metric["metric"],
+                    "model": metric["model"],
+                    "window_size": metric["window_size"],
+                    "sync_new_series_interval_seconds": metric[
+                        "sync_new_series_interval_seconds"
+                    ],
+                    "retraining_interval_minutes": metric[
+                        "retraining_interval_minutes"
+                    ],
+                },
+            )
             response.raise_for_status()
     except requests.exceptions.RequestException as e:
         print(f"failed to init analyzers: {e}")
@@ -45,37 +56,28 @@ def main():
         "--config", type=str, required=True, help="Path to the configuration file"
     )
     args = parser.parse_args()
-    
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-    if not logger.hasHandlers():
-        console_handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s [%(filename)s:%(lineno)d]"
-        )
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
+
+    logger = getLogger("detection-engine")
 
     logger.info("Loading configuration from %s", args.config)
     config = load_config(args.config)
-    logger.info("Configuration loaded: %s", pformat(config))
-    
+    logger.info("Configuration loaded:\n%s", pformat(config))
+
     manager = AnalyzeManager(logger, config["cluster_mode"], config["prometheus_url"])
-    # manager.init_analyzers(config["metrics"])
-    # 确保在程序结束前线程完成
     atexit.register(manager.cleanup)
-    
+
     # Set up the tornado web app
     app = make_app(logger, manager)
     app.listen(config["server"]["port"])
     server_process = Process(target=tornado.ioloop.IOLoop.instance().start)
     # Start up the server to expose the metrics.
     server_process.start()
-    
-    
+
     time.sleep(5)
-    
-    init_analyzers(f"http://127.0.0.1:{config['server']['port']}/add_metric", config["metrics"])
+
+    init_analyzers(
+        f"http://127.0.0.1:{config['server']['port']}/add_metric", config["metrics"]
+    )
 
     while True:
         schedule.run_pending()

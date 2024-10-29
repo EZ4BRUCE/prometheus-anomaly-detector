@@ -8,8 +8,8 @@ prometheus_url: http://localhost:9090
 metrics:
   - metric: controlplane_billing_balance{has_paid_instance="1"}
     model: prophet
-    sync_new_series_interval_seconds: 1200
+    sync_new_series_interval_seconds: 600
     window_size: 10d
-    retraining_interval_minutes: 5
+    retraining_interval_minutes: 120
 
 

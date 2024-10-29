@@ -105,10 +105,6 @@ class ProphetPredictor(SeriesPredictor):
 
     def predict(self, time: datetime):
 
-        self.logger.info(
-            f"model {self.model_name} predicting value for series {self.metric.label_config} at {time}"
-        )
-
         # get the current metric value so that it can be compared with the predicted values
         current_metric_value = Metric(
             self.prometheus_client.get_current_metric_value(

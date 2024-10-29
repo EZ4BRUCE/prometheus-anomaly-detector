@@ -78,12 +78,6 @@ class AnalyzeManager:
 
     async def predict(self):
 
-        self.logger.info(
-            "[%s] predicting series values for analyzers: [%s]",
-            "manager",
-            ", ".join([analyzer.metric_promql for analyzer in self.analyzers.values()]),
-        )
-
         if len(self.analyzers) == 0:
             self.logger.info("[%s] No analyzers to predict", "manager")
             return

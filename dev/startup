@@ -36,4 +36,3 @@ kdu && kubectl port-forward -n mo-ob svc/mo-ob-opensource-kube-prom-prometheus 9
 kdc && kubectl port-forward -n mo-ob svc/mo-ob-opensource-controlpl-prometheus 9090:9090
 
 sync有问题
-series的赋值有问题

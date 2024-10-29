@@ -323,7 +323,6 @@ class MetricAnalyzer:
             for predictor in result:
                 if predictor is not None:
                     self.series_predictors[predictor.get_series_hash()] = predictor
-                    
 
             self.logger.info(
                 "[%s] %s predictors added", "analyzer", len(self.series_predictors)
@@ -376,22 +375,6 @@ class MetricAnalyzer:
         )
         return predictor_model
 
-    def init_run(self):
-        """Run the retrain_predictors method at regular intervals."""
-        if len(self.series_predictors) == 0:
-            self.logger.info(
-                "[%s] init promql analyzer for %s", "analyzer", self.metric_promql
-            )
-            self.sync_new_series()
-
-        self.logger.info(
-            "[%s] %s(id: %s) initial training for %d series done",
-            "analyzer",
-            self.metric_promql,
-            id(self),
-            len(self.series_predictors),
-        )
-
     def run(self):
         """Run the retrain_predictors method at regular intervals."""
         if len(self.series_predictors) == 0:
@@ -407,20 +390,19 @@ class MetricAnalyzer:
             id(self),
             len(self.series_predictors),
         )
-        
 
         # Schedule retrain_predictors to run every retraining_interval_minutes
-        schedule.every(30000).seconds.do(
+        schedule.every(90).seconds.do(
             lambda: asyncio.run(self.check_and_retrain_predictors())
         )
 
         self.logger.info(
-            "[%s] Scheduled check and retrain predictors every 30 seconds.",
+            "[%s] Scheduled check predictors retrain schedule every 30 seconds.",
             "analyzer",
         )
 
         schedule.every(self.sync_new_series_interval_seconds).seconds.do(
-            lambda: asyncio.run(self.sync_new_series())
+            lambda: asyncio.run(self.resync_series())
         )
 
         self.logger.info(
@@ -432,6 +414,14 @@ class MetricAnalyzer:
         while not self.stop_event.is_set():
             schedule.run_pending()
             time.sleep(1)
+
+    async def resync_series(self):
+        self.logger.info(
+            "[%s] resync series for %s",
+            "analyzer",
+            self.metric_promql,
+        )
+        self.sync_new_series()
 
     def stop(self):
         with self.predictor_dict_lock:
