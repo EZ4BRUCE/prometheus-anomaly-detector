@@ -177,6 +177,7 @@ class MetricAnalyzer:
                 publish_labels.append("value_type")
                 publish_labels.append("model_name")
                 publish_labels.append("metric_type")
+                publish_labels.append("origin_metric_name")
                 self.gauge_metric = Gauge(
                     self.metric_name + "_" + self.model_name,
                     "Forecasted value by " + self.model_name,

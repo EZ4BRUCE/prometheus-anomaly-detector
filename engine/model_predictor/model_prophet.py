@@ -124,6 +124,7 @@ class ProphetPredictor(SeriesPredictor):
                 "value_type": column_name,
                 "model_name": self.model_name,
                 "metric_type": "anomaly-detection",
+                "origin_metric_name": self.metric.metric_name,
             }
 
             self.gauge_metric.labels(**public_labels_perdicted).set(
@@ -146,6 +147,7 @@ class ProphetPredictor(SeriesPredictor):
                 "value_type": "anomaly",
                 "model_name": self.model_name,
                 "metric_type": "anomaly-detection",
+                "origin_metric_name": self.metric.metric_name,
             }
 
             # create a new time series that has value_type=anomaly
