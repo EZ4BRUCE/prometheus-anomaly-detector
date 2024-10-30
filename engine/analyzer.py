@@ -16,7 +16,7 @@ from prometheus_client import Gauge
 from prometheus_api_client import PrometheusConnect
 from prometheus_api_client.utils import parse_timedelta
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from prometheus_client import REGISTRY
 
 CONST_METRIC_NAME_LABEL_KEY = "__name__"
@@ -31,7 +31,7 @@ class MetricAnalyzer:
     prometheus_url: str = None
     prometheus_client: PrometheusConnect = None
     model_name: str = None
-    rolling_data_window_size = None
+    rolling_data_window_size: str = None
     # eg: 120m
     retraining_interval_minutes: int = 120
     sync_new_series_interval_seconds: int = 300
@@ -70,7 +70,7 @@ class MetricAnalyzer:
             disable_ssl=True,
         )
         self.model_name = model_name
-        self.rolling_data_window_size = parse_timedelta("now", rolling_data_window_size)
+        self.rolling_data_window_size = rolling_data_window_size
         self.retraining_interval_minutes = retraining_interval_minutes
         self.predictor_dict_lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -94,7 +94,7 @@ class MetricAnalyzer:
 
         with self.predictor_dict_lock:
             if len(self.series_predictors) == 0:
-                self.logger.info(
+                self.logger.warning(
                     "[%s] %s(id: %s) no series to predict",
                     "analyzer",
                     self.metric_promql,
@@ -141,6 +141,19 @@ class MetricAnalyzer:
         # 更新 last_retrain_time
         for predictor in retrain_predictors:
             predictor.last_retrain_time = current_time
+
+    def series_data_ready(self, metric_name, labels, time_range) -> bool:
+        data_start_time = datetime.now() - parse_timedelta(
+            "now", time_range
+        )
+        data_end_time = data_start_time + timedelta(seconds=1200)
+        new_series_data = self.prometheus_client.get_metric_range_data(
+            metric_name=metric_name,
+            label_config=labels,
+            start_time=data_start_time,
+            end_time=data_end_time, 
+        )
+        return len(new_series_data) > 0
 
     # 1. api call
     # 2. auto sync series_predictors
@@ -204,6 +217,23 @@ class MetricAnalyzer:
                         "[%s] label keys not match: %s", "analyzer", labels.keys()
                     )
                     continue
+                if not self.series_data_ready(metric_name, labels, self.rolling_data_window_size):
+                    self.logger.warning(
+                        "[%s] data is not ready(%s) to train for metric: %s series: %s, skip training",
+                        "analyzer",
+                        self.rolling_data_window_size,
+                        self.metric_promql,
+                        series["metric"],
+                    )
+                    continue
+                else:
+                    self.logger.info(
+                        "[%s] data is ready(%s) to train for metric: %s series: %s, start training",
+                        "analyzer",
+                        self.rolling_data_window_size,
+                        self.metric_promql,
+                        series["metric"],
+                    )
 
                 series_label_hash = hash(frozenset(labels.items()))
                 with self.predictor_dict_lock:
@@ -292,7 +322,7 @@ class MetricAnalyzer:
     ):
         """Asynchronously train the machine learning models."""
         if not predictors:
-            self.logger.info("[%s] No series to train. Skipping training.", "analyzer")
+            self.logger.warning("[%s] No series to train. Skipping training.", "analyzer")
             return
 
         self.logger.info("[%s] Training models asynchronously with asyncio", "analyzer")

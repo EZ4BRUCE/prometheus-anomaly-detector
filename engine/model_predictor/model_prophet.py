@@ -7,6 +7,7 @@ from prometheus_api_client import Metric
 from engine.model_predictor.model_predictor import SeriesPredictor
 import threading
 from prometheus_client import Gauge
+from prometheus_api_client.utils import parse_timedelta
 
 
 class ProphetPredictor(SeriesPredictor):
@@ -35,7 +36,8 @@ class ProphetPredictor(SeriesPredictor):
     ):
         """Initialize the Metric object."""
         self.logger = logger
-        self.metric = Metric(metric, rolling_data_window_size)
+        oldest_data_datetime = parse_timedelta("now", rolling_data_window_size)
+        self.metric = Metric(metric, oldest_data_datetime)
         self.series_hash = series_hash
         self.prometheus_client = PrometheusConnect(
             url=prometheus_url,

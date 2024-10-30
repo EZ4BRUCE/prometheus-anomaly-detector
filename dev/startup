@@ -35,4 +35,11 @@ kdu && kubectl port-forward -n mo-ob svc/mo-ob-opensource-kube-prom-prometheus 9
 
 kdc && kubectl port-forward -n mo-ob svc/mo-ob-opensource-controlpl-prometheus 9090:9090
 
-sync有问题
+
+需要支持数据不够时不训练，但是会注册，然后定时轮询预测机看是否可以训练
+
+需要支持幂等的add接口，重复提交不会重复注册
+
+next：同一个指标，不同model的预测机，需要支持多个model的预测机
+
+一个api提交多个rule
