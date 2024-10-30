@@ -26,7 +26,8 @@ class SarimaPredictor(SeriesPredictor):
 
     def __init__(self, logger, metric, series_hash, prometheus_url, gauge_metric: Gauge, rolling_data_window_size="10d", order=(1, 1, 1), seasonal_order=(1, 1, 1, 12)):
         """Initialize the SARIMA model."""
-        self.metric = Metric(metric, rolling_data_window_size)
+        oldest_data_datetime = parse_timedelta("now", rolling_data_window_size)
+        self.metric = Metric(metric, oldest_data_datetime)
         self.logger = logger
         self.series_hash = series_hash
         self.prometheus_client = PrometheusConnect(

@@ -8,7 +8,7 @@ from engine.model_predictor.model_predictor import SeriesPredictor
 import threading
 from prometheus_client import Gauge
 from prometheus_api_client import PrometheusConnect
-
+from prometheus_api_client.utils import parse_timedelta
 class FourierPredictor(SeriesPredictor):
     """docstring for Predictor."""
     logger = None
@@ -26,7 +26,8 @@ class FourierPredictor(SeriesPredictor):
 
     def __init__(self, logger, metric, series_hash, prometheus_url, gauge_metric: Gauge, rolling_data_window_size="10d"):
         """Initialize metric object."""
-        self.metric = Metric(metric, rolling_data_window_size)
+        oldest_data_datetime = parse_timedelta("now", rolling_data_window_size)
+        self.metric = Metric(metric, oldest_data_datetime)
         self.logger = logger
         self.series_hash = series_hash
         self.prometheus_client = PrometheusConnect(

@@ -12,7 +12,7 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import pandas as pd
 from datetime import datetime
-
+from prometheus_api_client.utils import parse_timedelta
 
 class LstmPredictor(SeriesPredictor):
     """docstring for Predictor."""
@@ -43,7 +43,8 @@ class LstmPredictor(SeriesPredictor):
     ):
         """Initialize the Metric object."""
         self.logger = logger
-        self.metric = Metric(metric, rolling_data_window_size)
+        oldest_data_datetime = parse_timedelta("now", rolling_data_window_size)
+        self.metric = Metric(metric, oldest_data_datetime)
         self.series_hash = series_hash
         self.prometheus_client = PrometheusConnect(
             url=prometheus_url,

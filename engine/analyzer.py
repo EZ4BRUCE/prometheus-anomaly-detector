@@ -143,15 +143,13 @@ class MetricAnalyzer:
             predictor.last_retrain_time = current_time
 
     def series_data_ready(self, metric_name, labels, time_range) -> bool:
-        data_start_time = datetime.now() - parse_timedelta(
-            "now", time_range
-        )
+        data_start_time = datetime.now() - parse_timedelta("now", time_range)
         data_end_time = data_start_time + timedelta(seconds=1200)
         new_series_data = self.prometheus_client.get_metric_range_data(
             metric_name=metric_name,
             label_config=labels,
             start_time=data_start_time,
-            end_time=data_end_time, 
+            end_time=data_end_time,
         )
         return len(new_series_data) > 0
 
@@ -217,7 +215,10 @@ class MetricAnalyzer:
                         "[%s] label keys not match: %s", "analyzer", labels.keys()
                     )
                     continue
-                if not self.series_data_ready(metric_name, labels, self.rolling_data_window_size):
+
+                if not self.series_data_ready(
+                    metric_name, labels, self.rolling_data_window_size
+                ):
                     self.logger.warning(
                         "[%s] data is not ready(%s) to train for metric: %s series: %s, skip training",
                         "analyzer",
@@ -322,7 +323,9 @@ class MetricAnalyzer:
     ):
         """Asynchronously train the machine learning models."""
         if not predictors:
-            self.logger.warning("[%s] No series to train. Skipping training.", "analyzer")
+            self.logger.warning(
+                "[%s] No series to train. Skipping training.", "analyzer"
+            )
             return
 
         self.logger.info("[%s] Training models asynchronously with asyncio", "analyzer")
