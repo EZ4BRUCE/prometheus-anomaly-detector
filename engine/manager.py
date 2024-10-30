@@ -21,6 +21,10 @@ class AnalyzeManager:
         self.lock = threading.Lock()
         self.prometheus_url = prometheus_url
 
+    def get_all_metric_promql(self):
+        with self.lock:
+            return list(self.analyzers.keys())
+
     def delete_metric(self, metric_promql: str):
         with self.lock:
             if metric_promql in self.analyzers:
