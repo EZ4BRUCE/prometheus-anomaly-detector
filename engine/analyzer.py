@@ -43,7 +43,7 @@ class MetricAnalyzer:
     gauge_metric: Gauge = None
     # label key-value hash -> ModelPredictor
     series_predictors: dict[str, SeriesPredictor] = {}
-    predictor_dict_lock: threading.Lock = None
+    series_lock: threading.Lock = None
 
     background_thread: threading.Thread = None
     stop_event: threading.Event = None
@@ -72,7 +72,7 @@ class MetricAnalyzer:
         self.model_name = model_name
         self.rolling_data_window_size = rolling_data_window_size
         self.retraining_interval_minutes = retraining_interval_minutes
-        self.predictor_dict_lock = threading.Lock()
+        self.series_lock = threading.Lock()
         self.stop_event = threading.Event()
         self.sync_new_series_interval_seconds = sync_new_series_interval_seconds
 
@@ -92,7 +92,7 @@ class MetricAnalyzer:
 
         now = datetime.now()
 
-        with self.predictor_dict_lock:
+        with self.series_lock:
             if len(self.series_predictors) == 0:
                 self.logger.warning(
                     "[%s] %s(id: %s) no series to predict",
@@ -101,23 +101,73 @@ class MetricAnalyzer:
                     id(self),
                 )
                 return
-
+            should_delete_predictors = []
             for hash, predictor in self.series_predictors.items():
-                predictor.predict(now)
+                ok = predictor.predict(now)
+                if not ok:
+                    self.logger.info(
+                        "[%s] predictor %s (%s %s) is outdated, delete",
+                        "analyzer",
+                        hash,
+                        predictor.metric.metric_name,
+                        predictor.metric.label_config,
+                    )
+                    should_delete_predictors.append(hash)
 
-            self.logger.info(
-                "[%s] all series values updated in gauge metrics for %s(id: %s)",
-                "analyzer",
-                self.metric_promql,
-                id(self),
-            )
+            for hash in should_delete_predictors:
+                predictor = self.series_predictors[hash]
+                delete_series_yhat = {
+                    **predictor.metric.label_config,
+                    "value_type": "yhat",
+                    "model_name": predictor.model_name,
+                    "metric_type": "anomaly-detection",
+                    "origin_metric_name": predictor.metric.metric_name,
+                }
+                delete_series_anomaly = {
+                    **predictor.metric.label_config,
+                    "value_type": "anomaly",
+                    "model_name": predictor.model_name,
+                    "metric_type": "anomaly-detection",
+                    "origin_metric_name": predictor.metric.metric_name,
+                }
+                delete_series_yhat_upper = {
+                    **predictor.metric.label_config,
+                    "value_type": "yhat_upper",
+                    "model_name": predictor.model_name,
+                    "metric_type": "anomaly-detection",
+                    "origin_metric_name": predictor.metric.metric_name,
+                }
+                delete_series_yhat_lower = {
+                    **predictor.metric.label_config,
+                    "value_type": "yhat_lower",
+                    "model_name": predictor.model_name,
+                    "metric_type": "anomaly-detection",
+                    "origin_metric_name": predictor.metric.metric_name,
+                }
+
+                self.gauge_metric.remove(
+                    *self.gauge_metric.labels(**delete_series_yhat)._labelvalues
+                )
+
+                self.gauge_metric.remove(
+                    *self.gauge_metric.labels(**delete_series_anomaly)._labelvalues
+                )
+
+                self.gauge_metric.remove(
+                    *self.gauge_metric.labels(**delete_series_yhat_upper)._labelvalues
+                )
+
+                self.gauge_metric.remove(
+                    *self.gauge_metric.labels(**delete_series_yhat_lower)._labelvalues
+                )
+                del self.series_predictors[hash]
 
     async def check_and_retrain_predictors(self):
         """Asynchronously retrain the predictors that need updating."""
         current_time = datetime.now()
 
         # 过滤出需要重新训练的预测器
-        with self.predictor_dict_lock:
+        with self.series_lock:
             retrain_predictors = [
                 predictor
                 for predictor in self.series_predictors.values()
@@ -237,7 +287,7 @@ class MetricAnalyzer:
                     )
 
                 series_label_hash = hash(frozenset(labels.items()))
-                with self.predictor_dict_lock:
+                with self.series_lock:
                     if series_label_hash not in self.series_predictors:
                         self.logger.info("[%s] got new series: %s", "analyzer", series)
                         new_predictor = self.new_model_predictor(
@@ -259,7 +309,124 @@ class MetricAnalyzer:
                     len(new_predictors),
                     self.metric_promql,
                 )
+
                 asyncio.run(self.train_model_async(new_predictors, initial_run=True))
+
+            else:
+                self.logger.info(
+                    "[%s] Metric [%s] all series' predictors already exists. Skipping training.",
+                    "analyzer",
+                    self.metric_name,
+                )
+        except Exception as e:
+            self.logger.error("[%s] Error syncing new series: %s", "analyzer", str(e))
+
+    async def sync_new_series_async(self):
+        try:
+            # Get current metric value
+            current_series = self.prometheus_client.get_current_metric_value(
+                metric_name=self.metric_promql
+            )
+
+            if len(current_series) == 0:
+                self.logger.info("no series to add")
+                return
+
+            self.logger.info(
+                "[%s] got %s series total", "analyzer", len(current_series)
+            )
+
+            new_predictors = []
+
+            if self.series_label_keys is None:
+                labels = deepcopy(current_series[0]["metric"])
+                if CONST_METRIC_NAME_LABEL_KEY not in labels:
+                    raise ValueError(
+                        f"metric {self.metric_promql} has no {CONST_METRIC_NAME_LABEL_KEY}"
+                    )
+                self.metric_name = labels[CONST_METRIC_NAME_LABEL_KEY]
+                del labels[CONST_METRIC_NAME_LABEL_KEY]
+                self.series_label_keys = labels.keys()
+
+            # Update GAUGE_DICT
+            if self.metric_name is not None and self.gauge_metric is None:
+                publish_labels = list(self.series_label_keys)
+                publish_labels.append("value_type")
+                publish_labels.append("model_name")
+                publish_labels.append("metric_type")
+                publish_labels.append("origin_metric_name")
+                self.gauge_metric = Gauge(
+                    self.metric_name + "_" + self.model_name,
+                    "Forecasted value by " + self.model_name,
+                    labelnames=publish_labels,
+                )
+
+            for series in current_series:
+                if CONST_METRIC_NAME_LABEL_KEY not in series["metric"]:
+                    raise ValueError(
+                        "[%s] metric %s has no %s",
+                        "analyzer",
+                        series["metric"],
+                        CONST_METRIC_NAME_LABEL_KEY,
+                    )
+
+                metric_name = series["metric"][CONST_METRIC_NAME_LABEL_KEY]
+                self.metric_name = metric_name
+
+                labels = deepcopy(series["metric"])
+                del labels[CONST_METRIC_NAME_LABEL_KEY]
+
+                if not self.same_label_keys(labels.keys()):
+                    self.logger.warning(
+                        "[%s] label keys not match: %s", "analyzer", labels.keys()
+                    )
+                    continue
+
+                if not self.series_data_ready(
+                    metric_name, labels, self.rolling_data_window_size
+                ):
+                    self.logger.warning(
+                        "[%s] data is not ready(%s) to train for metric: %s series: %s, skip training",
+                        "analyzer",
+                        self.rolling_data_window_size,
+                        self.metric_promql,
+                        series["metric"],
+                    )
+                    continue
+                else:
+                    self.logger.info(
+                        "[%s] data is ready(%s) to train for metric: %s series: %s, start training",
+                        "analyzer",
+                        self.rolling_data_window_size,
+                        self.metric_promql,
+                        series["metric"],
+                    )
+
+                series_label_hash = hash(frozenset(labels.items()))
+                with self.series_lock:
+                    if series_label_hash not in self.series_predictors:
+                        self.logger.info("[%s] got new series: %s", "analyzer", series)
+                        new_predictor = self.new_model_predictor(
+                            series,
+                            series_label_hash,
+                            self.model_name,
+                            self.prometheus_url,
+                            self.gauge_metric,
+                            self.rolling_data_window_size,
+                        )
+                        new_predictors.append(new_predictor)
+
+            # Train only the newly added predictors
+            if len(new_predictors) > 0:
+                # Schedule the training as a background task
+                self.logger.info(
+                    "[%s] Training %s new series predictors for metric: %s",
+                    "analyzer",
+                    len(new_predictors),
+                    self.metric_promql,
+                )
+                await self.train_model_async(new_predictors, initial_run=True)
+
             else:
                 self.logger.info(
                     "[%s] Metric [%s] all series' predictors already exists. Skipping training.",
@@ -328,7 +495,12 @@ class MetricAnalyzer:
             )
             return
 
-        self.logger.info("[%s] Training models asynchronously with asyncio", "analyzer")
+        self.logger.info(
+            "[%s] Training models asynchronously with asyncio for metric %s's %d new series",
+            "analyzer",
+            self.metric_promql,
+            len(predictors),
+        )
 
         # Create asynchronous tasks for each predictor
         tasks = [
@@ -336,7 +508,7 @@ class MetricAnalyzer:
             for predictor in predictors
         ]
 
-        with self.predictor_dict_lock:
+        with self.series_lock:
             if self.is_stopped:
                 self.logger.info(
                     "[%s] promql analyzer for %s already stopped",
@@ -349,7 +521,7 @@ class MetricAnalyzer:
         result = await asyncio.gather(*tasks)
 
         # Update global PREDICTOR_MODEL_LIST
-        with self.predictor_dict_lock:
+        with self.series_lock:
             if len(result) == 0:
                 self.logger.info("[%s] no predictor trained", "analyzer")
                 return
@@ -435,15 +607,13 @@ class MetricAnalyzer:
             "analyzer",
         )
 
-        schedule.every(self.sync_new_series_interval_seconds).seconds.do(
-            lambda: asyncio.run(self.resync_series())
-        )
-
-        self.logger.info(
-            "[%s] Scheduled sync_new_series every %s seconds.",
-            "analyzer",
-            self.sync_new_series_interval_seconds,
-        )
+        # 使用 Job 对象来控制任务
+        sync_job = schedule.every(self.sync_new_series_interval_seconds).seconds
+        def resync_task():
+            asyncio.run(self.resync_series())
+            # 任务执行完毕后，重新设置下次执行时间
+            sync_job.next_run = datetime.now() + timedelta(seconds=self.sync_new_series_interval_seconds)
+        sync_job.do(resync_task)
 
         while not self.stop_event.is_set():
             schedule.run_pending()
@@ -455,10 +625,10 @@ class MetricAnalyzer:
             "analyzer",
             self.metric_promql,
         )
-        self.sync_new_series()
+        await self.sync_new_series_async()
 
     def stop(self):
-        with self.predictor_dict_lock:
+        with self.series_lock:
             if self.is_stopped:
                 return
 

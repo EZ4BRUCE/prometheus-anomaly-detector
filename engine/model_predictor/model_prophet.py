@@ -105,15 +105,17 @@ class ProphetPredictor(SeriesPredictor):
             )[0]
             return self.predicted_df.iloc[[nearest_index]]
 
-    def predict(self, time: datetime):
-
+    def predict(self, time: datetime) -> bool:
         # get the current metric value so that it can be compared with the predicted values
-        current_metric_value = Metric(
-            self.prometheus_client.get_current_metric_value(
-                self.metric.metric_name,
-                self.metric.label_config,
-            )[0]
+        current_metric_data = self.prometheus_client.get_current_metric_value(
+            self.metric.metric_name,
+            self.metric.label_config,
         )
+
+        if len(current_metric_data) == 0:
+            return False
+
+        current_metric_value = Metric(current_metric_data[0])
 
         prediction = self.predict_value(time)
 
@@ -155,3 +157,4 @@ class ProphetPredictor(SeriesPredictor):
             # create a new time series that has value_type=anomaly
             # this value is 1 if an anomaly is found 0 if not
             self.gauge_metric.labels(**public_labels_anomaly).set(anomaly)
+            return True
