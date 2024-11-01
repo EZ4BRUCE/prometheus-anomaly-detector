@@ -23,6 +23,10 @@ CONST_METRIC_NAME_LABEL_KEY = "__name__"
 
 
 class MetricAnalyzer:
+    
+    Group:str = None
+    DetectionName:str = None
+
     logger: logging.Logger = None
     cluster_mode: bool = False
     # must be a metric promql(or a reconrding rule metric name), not a promql
@@ -52,6 +56,8 @@ class MetricAnalyzer:
 
     def __init__(
         self,
+        group,
+        detection_name,
         logger,
         cluster_mode,
         metric_promql,
@@ -61,6 +67,9 @@ class MetricAnalyzer:
         retraining_interval_minutes,
         sync_new_series_interval_seconds,
     ):
+        self.Group = group
+        self.DetectionName = detection_name
+        self.series_predictors = {}
         self.logger = logger
         self.cluster_mode = cluster_mode
         self.metric_promql = metric_promql
@@ -582,20 +591,25 @@ class MetricAnalyzer:
         return predictor_model
 
     def run(self):
-        """Run the retrain_predictors method at regular intervals."""
+        """Run the retrain_predictors method at regular intervals."""   
         if len(self.series_predictors) == 0:
             self.logger.info(
                 "[%s] init promql analyzer for %s", "analyzer", self.metric_promql
             )
             self.sync_new_series()
 
-        self.logger.info(
-            "[%s] %s(id: %s) initial training for %d series done",
-            "analyzer",
-            self.metric_promql,
-            id(self),
-            len(self.series_predictors),
-        )
+            self.logger.info(
+                "[%s] %s(id: %s) initial training for %d series done",
+                "analyzer",
+                self.metric_promql,
+                id(self),
+                len(self.series_predictors),
+            )
+        else:
+            self.logger.info(
+                "This analyzer is already running, skip initial training"
+            )
+            return
 
         # Schedule retrain_predictors to run every retraining_interval_minutes
         schedule.every(90).seconds.do(
@@ -603,7 +617,7 @@ class MetricAnalyzer:
         )
 
         self.logger.info(
-            "[%s] Scheduled check predictors retrain schedule every 30 seconds.",
+            "[%s] Scheduled check predictors retrain schedule every 90 seconds.",
             "analyzer",
         )
 

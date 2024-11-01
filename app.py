@@ -33,6 +33,8 @@ def init_analyzers(url: str, metrics: list[dict]):
             response = requests.post(
                 url,
                 json={
+                    "group": metric["group"],
+                    "detection_name": metric["detection_name"],
                     "metric": metric["metric"],
                     "model": metric["model"],
                     "window_size": metric["window_size"],
@@ -64,7 +66,6 @@ def main():
     logger.info("Configuration loaded:\n%s", pformat(config))
 
     manager = AnalyzeManager(logger, config["cluster_mode"], config["prometheus_url"])
-    atexit.register(manager.cleanup)
 
     # Set up the tornado web app
     app = make_app(logger, manager)

@@ -5,8 +5,10 @@ cluster_mode: False
 
 prometheus_url: http://localhost:9090
 
-metrics:
-  - metric: controlplane_billing_balance{has_paid_instance="1"}
+metrics: 
+  - group: controlplane_billing
+    detection_name: account_billing_balance
+    metric: controlplane_billing_balance{has_paid_instance="1"}
     model: prophet
     sync_new_series_interval_seconds: 60
     window_size: 10d

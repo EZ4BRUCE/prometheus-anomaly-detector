@@ -17,13 +17,15 @@ class AddMetricHandler(tornado.web.RequestHandler):
         try:
             # Parse JSON body
             data = json.loads(self.request.body)
-            metric_promql, model_name, window_size, retraining_interval_minutes, sync_new_series_interval_seconds = validate_parameters(data)
+            metric_promql, group, detection_name, model_name, window_size, retraining_interval_minutes, sync_new_series_interval_seconds = validate_parameters(data)
 
             self.logger.info(
                 f"Received new metric for training: {metric_promql}, model: {model_name}"
             )
 
             self.manager.add_metric(
+                group,
+                detection_name,
                 metric_promql,
                 model_name,
                 self.manager.prometheus_url,
@@ -47,6 +49,7 @@ class AddMetricHandler(tornado.web.RequestHandler):
             self.write({"status": "error", "message": str(e)})
 
 
+
 def validate_parameters(data):
     """Validate the input parameters."""
     # Validate new_metric
@@ -61,6 +64,16 @@ def validate_parameters(data):
         raise ValueError(
             f"Invalid or missing 'model' parameter. Must be one of {valid_models}."
         )
+
+    # Validate group
+    group = data.get("group")
+    if not group or not isinstance(group, str):
+        raise ValueError("Invalid or missing 'group' parameter.")   
+
+    # Validate detection_name
+    detection_name = data.get("detection_name")
+    if not detection_name or not isinstance(detection_name, str):
+        raise ValueError("Invalid or missing 'detection_name' parameter.")
 
     # Validate window_size
     window_size = data.get("window_size")
@@ -83,4 +96,4 @@ def validate_parameters(data):
     if not sync_new_series_interval_seconds or not isinstance(sync_new_series_interval_seconds, int):
         raise ValueError("Invalid or missing 'sync_new_series_interval_seconds' parameter.")
 
-    return new_metric, model_name, window_size, retraining_interval_minutes, sync_new_series_interval_seconds
+    return new_metric, group, detection_name, model_name, window_size, retraining_interval_minutes, sync_new_series_interval_seconds

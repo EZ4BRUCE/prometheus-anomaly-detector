@@ -17,20 +17,27 @@ class DeleteMetricHandler(tornado.web.RequestHandler):
         try:
             # Parse JSON body
             data = json.loads(self.request.body)
-            metric_promql = data.get("metric")
-            if not metric_promql or not isinstance(metric_promql, str):
-                raise ValueError("Invalid or missing 'metric' parameter.")
-
-            self.logger.info(
-                f"Deleting metric: {metric_promql}"
-            )
-
-            self.manager.delete_metric(metric_promql)
+            group = data.get("group")
+            detection_name = data.get("detection_name")
+            if not group or not isinstance(group, str):
+                raise ValueError("Invalid or missing 'group' parameter.")
+            
+            
+            if detection_name is None:
+                self.logger.info(
+                    f"Deleting group: {group}"
+                )
+                self.manager.delete_group(group)
+            else:
+                self.logger.info(
+                    f"Deleting metric: {group}, {detection_name}"
+                )
+                self.manager.delete_metric(group, detection_name)
 
             self.write(
                 {
                     "status": "success",
-                    "message": f"Delete metric {metric_promql} successfully",
+                    "message": f"Delete metric {group} {detection_name} successfully",
                 }
             )
 

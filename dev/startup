@@ -43,4 +43,12 @@ next：同一个指标，不同model的预测机，需要支持多个model的预
 
 curl -X POST http://localhost:8789/delete_metric \
      -H "Content-Type: application/json" \
-     -d '{"metric": "controlplane_billing_balance{has_paid_instance=\"1\"}"}'
+     -d '{"group": "controlplane_billing", "detection_name": "account_billing_balance"}'
+
+curl -X POST http://localhost:8789/add_metric \
+     -H "Content-Type: application/json" \
+     -d '{"group": "controlplane_billing", "detection_name": "account_billing_balance", "metric": "controlplane_billing_balance{has_paid_instance=\"1\"}", "model": "prophet", "window_size": "2h", "sync_new_series_interval_seconds": 1200, "retraining_interval_minutes": 50}'
+
+curl -X POST http://localhost:8789/add_metric \
+     -H "Content-Type: application/json" \
+     -d '{"group": "controlplane_billing1", "detection_name": "account_billing_balanc765e", "metric": "controlplane_instance_monthly_cu{payment=\"paid\", node=\"cn-hangzhou.10.1.47.178\"}", "model": "prophet", "window_size": "2h", "sync_new_series_interval_seconds": 1200, "retraining_interval_minutes": 50}'
