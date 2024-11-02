@@ -28,7 +28,21 @@ class AnalyzeManager:
 
     def get_detection_group(self, group_name: str):
         with self.lock:
-            return [key[1] for key in self.group_analyzers.keys() if key[0] == group_name]
+            jobs = []
+            for key in self.group_analyzers.keys():
+                if key[0] == group_name:
+                    analyzer = self.group_analyzers[key]
+                    with analyzer.series_lock:
+                        jobs.append({
+                            "group": key[0],
+                            "detection_name": key[1],
+                            "metric": analyzer.metric_promql,
+                            "model": analyzer.model_name,
+                            "window_size": analyzer.rolling_data_window_size,
+                            "retraining_interval_minutes": analyzer.retraining_interval_minutes,
+                            "sync_new_series_interval_seconds": analyzer.sync_new_series_interval_seconds,
+                        })
+            return jobs
 
     def delete_metric(self, group: str, detection_names: list[str]):
         with self.lock:

@@ -12,7 +12,7 @@ class GetDetectionJobHandler(tornado.web.RequestHandler):
         self.manager = analyzer_manager
 
     async def get(self):
-        group_name = self.get_argument("group_name", None)
+        group_name = self.get_argument("group", None)
         
         if not group_name:
             self.set_header("Content-Type", "text; charset=utf-8")
