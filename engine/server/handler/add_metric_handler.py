@@ -16,28 +16,29 @@ class AddMetricHandler(tornado.web.RequestHandler):
         """Add a new metric and trigger model training."""
         try:
             # Parse JSON body
-            data = json.loads(self.request.body)
-            metric_promql, group, detection_name, model_name, window_size, retraining_interval_minutes, sync_new_series_interval_seconds = validate_parameters(data)
+            data_list = json.loads(self.request.body)
+            for data in data_list:
+                metric_promql, group, detection_name, model_name, window_size, retraining_interval_minutes, sync_new_series_interval_seconds = validate_parameters(data)
 
-            self.logger.info(
-                f"Received new metric for training: {metric_promql}, model: {model_name}"
-            )
+                self.logger.info(
+                    f"Received new metric for training: {metric_promql}, model: {model_name}"
+                )
 
-            self.manager.add_metric(
-                group,
-                detection_name,
-                metric_promql,
-                model_name,
-                self.manager.prometheus_url,
-                window_size,
-                retraining_interval_minutes,
-                sync_new_series_interval_seconds,
-            )
+                self.manager.add_metric(
+                    group,
+                    detection_name,
+                    metric_promql,
+                    model_name,
+                    self.manager.prometheus_url,
+                    window_size,
+                    retraining_interval_minutes,
+                    sync_new_series_interval_seconds,
+                )
 
             self.write(
                 {
                     "status": "success",
-                    "message": f"Add metric {metric_promql} successfully",
+                    "message": f"Add {len(data_list)} metrics for group{group} successfully",
                 }
             )
 
@@ -45,7 +46,7 @@ class AddMetricHandler(tornado.web.RequestHandler):
             self.set_status(400)
             self.write({"status": "error", "message": "Invalid JSON"})
         except Exception as e:
-            self.logger.error(f"Error adding new metric: {str(e)}")
+            self.logger.error(f"Error adding new metrics: {str(e)}")
             self.write({"status": "error", "message": str(e)})
 
 

@@ -29,24 +29,8 @@ def load_config(file_path):
 
 def init_analyzers(url: str, metrics: list[dict]):
     try:
-        for metric in metrics:
-            response = requests.post(
-                url,
-                json={
-                    "group": metric["group"],
-                    "detection_name": metric["detection_name"],
-                    "metric": metric["metric"],
-                    "model": metric["model"],
-                    "window_size": metric["window_size"],
-                    "sync_new_series_interval_seconds": metric[
-                        "sync_new_series_interval_seconds"
-                    ],
-                    "retraining_interval_minutes": metric[
-                        "retraining_interval_minutes"
-                    ],
-                },
-            )
-            response.raise_for_status()
+        response = requests.post(url, json=metrics)
+        response.raise_for_status()
     except requests.exceptions.RequestException as e:
         print(f"failed to init analyzers: {e}")
 

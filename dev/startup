@@ -52,3 +52,14 @@ curl -X POST http://localhost:8789/add_metric \
 curl -X POST http://localhost:8789/add_metric \
      -H "Content-Type: application/json" \
      -d '{"group": "controlplane_billing1", "detection_name": "account_billing_balanc765e", "metric": "controlplane_instance_monthly_cu{payment=\"paid\", node=\"cn-hangzhou.10.1.47.178\"}", "model": "prophet", "window_size": "2h", "sync_new_series_interval_seconds": 1200, "retraining_interval_minutes": 50}'
+
+
+{
+     "group": "controlplane_billing1", 
+     "detection_name": "account_billing_balanc765e", 
+     "metric": "controlplane_instance_monthly_cu{payment=\"paid\", node=\"cn-hangzhou.10.1.47.178\"}", 
+     "model": "prophet", 
+     "window_size": "2h", 
+     "sync_new_series_interval_seconds": 1200, 
+     "retraining_interval_minutes": 50
+}
