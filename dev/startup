@@ -43,7 +43,7 @@ next：同一个指标，不同model的预测机，需要支持多个model的预
 
 curl -X POST http://localhost:8789/delete_metric \
      -H "Content-Type: application/json" \
-     -d '{"group": "controlplane_billing", "detection_name": "account_billing_balance"}'
+     -d '{"group": "controlplane_billing", "detection_names": ["account_billing_balance", "account_cu"]}'
 
 curl -X POST http://localhost:8789/add_metric \
      -H "Content-Type: application/json" \

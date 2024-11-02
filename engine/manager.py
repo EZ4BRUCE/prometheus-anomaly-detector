@@ -30,18 +30,19 @@ class AnalyzeManager:
         with self.lock:
             return [key[1] for key in self.group_analyzers.keys() if key[0] == group_name]
 
-    def delete_metric(self, group: str, detection_name: str):
+    def delete_metric(self, group: str, detection_names: list[str]):
         with self.lock:
-            if (group, detection_name) in self.group_analyzers:
-                self.group_analyzers[(group, detection_name)].stop()
-                del self.group_analyzers[(group, detection_name)]
-                self.logger.info(
-                    "[%s] promql analyzer for %s deleted", "manager", (group, detection_name)
-                )
-            else:
-                self.logger.warning(
-                    "[%s] promql analyzer for %s not found", "manager", (group, detection_name)
-                )
+            for detection_name in detection_names:
+                if (group, detection_name) in self.group_analyzers:
+                    self.group_analyzers[(group, detection_name)].stop()
+                    del self.group_analyzers[(group, detection_name)]
+                    self.logger.info(
+                        "[%s] promql analyzer for %s deleted", "manager", (group, detection_name)
+                    )
+                else:
+                    self.logger.warning(    
+                        "[%s] promql analyzer for %s not found", "manager", (group, detection_name)
+                    )
 
     def delete_group(self, group: str):
         with self.lock:

@@ -13,8 +13,8 @@ metrics:
     sync_new_series_interval_seconds: 60
     window_size: 2h
     retraining_interval_minutes: 120
-  - group: controlplane_billing1
-    detection_name: account_billing_balance
+  - group: controlplane_billing
+    detection_name: account_cu
     metric: controlplane_instance_monthly_cu{payment="paid", node="cn-hangzhou.10.1.47.178"}
     model: prophet
     sync_new_series_interval_seconds: 60
