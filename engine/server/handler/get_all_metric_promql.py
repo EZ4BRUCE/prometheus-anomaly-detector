@@ -3,7 +3,7 @@ from engine.manager import AnalyzeManager
 from prometheus_client import generate_latest, REGISTRY
 
 
-class GetAllMetricPromqlHandler(tornado.web.RequestHandler):
+class GetDetectionJobHandler(tornado.web.RequestHandler):
     """Tornado web request handler."""
 
     def initialize(self, logger, analyzer_manager: AnalyzeManager):
@@ -12,11 +12,23 @@ class GetAllMetricPromqlHandler(tornado.web.RequestHandler):
         self.manager = analyzer_manager
 
     async def get(self):
-        self.write(
-            {
-                "status": "success",
-                "message": f"Get all metric promql successfully",
-                "data": self.manager.get_all_metric_promql(),
-            }
-        )
-        self.set_header("Content-Type", "text; charset=utf-8")
+        group_name = self.get_argument("group_name", None)
+        
+        if not group_name:
+            self.set_header("Content-Type", "text; charset=utf-8")
+            self.write(
+                {
+                    "status": "success",
+                    "message": f"Get all metric promql for all groups successfully",
+                    "data": self.manager.get_all_metric_promql(),
+                }
+            )
+        else:
+            self.set_header("Content-Type", "text; charset=utf-8")
+            self.write(
+                {
+                    "status": "success",
+                    "message": f"Get all metric promql for group {group_name} successfully",
+                    "data": self.manager.get_detection_group(group_name),
+                }
+            )

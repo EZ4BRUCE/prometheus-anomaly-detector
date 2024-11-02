@@ -3,7 +3,7 @@ import tornado.web
 from engine.server.handler.add_metric_handler import AddMetricHandler
 from engine.server.handler.get_predicted_data_handler import GetPredictedDataHandler
 from engine.server.handler.delete_metric_handler import DeleteMetricHandler
-from engine.server.handler.get_all_metric_promql import GetAllMetricPromqlHandler
+from engine.server.handler.get_all_metric_promql import GetDetectionJobHandler
 def make_app(logger, manager):
     """Initialize the tornado web app."""
     logger.info("Initializing Tornado Web App")
@@ -30,8 +30,8 @@ def make_app(logger, manager):
                 dict(logger=logger, analyzer_manager=manager),
             ),
             (
-                r"/all_metrics",
-                GetAllMetricPromqlHandler,
+                r"/get_metrics",
+                GetDetectionJobHandler,
                 dict(logger=logger, analyzer_manager=manager),
             ),
         ],

@@ -26,6 +26,10 @@ class AnalyzeManager:
         with self.lock:
             return list(self.group_analyzers.keys())
 
+    def get_detection_group(self, group_name: str):
+        with self.lock:
+            return [key[1] for key in self.group_analyzers.keys() if key[0] == group_name]
+
     def delete_metric(self, group: str, detection_name: str):
         with self.lock:
             if (group, detection_name) in self.group_analyzers:
