@@ -28,6 +28,10 @@ def load_config(file_path):
 
 
 def init_analyzers(url: str, metrics: list[dict]):
+
+    if not metrics or len(metrics) == 0:
+        return
+
     try:
         response = requests.post(url, json=metrics)
         response.raise_for_status()
