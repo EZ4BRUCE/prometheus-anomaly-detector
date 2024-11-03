@@ -22,6 +22,10 @@ class AnalyzeManager:
         self.lock = threading.Lock()
         self.prometheus_url = prometheus_url
 
+    def get_all_groups(self):
+        with self.lock:
+            return list(set([key[0] for key in self.group_analyzers.keys()]))
+
     def get_all_metric_promql(self):
         with self.lock:
             return list(self.group_analyzers.keys())
@@ -112,7 +116,6 @@ class AnalyzeManager:
             self.group_analyzers[(group, detection_name)] = analyzer
         thread.start()
 
-    # TODO 实现：让predict不加锁，可以容忍旧数据，只要不报错就行
     async def predict(self):
         # 快速检查是否有分析器
         analyzer_count = len(self.group_analyzers)
