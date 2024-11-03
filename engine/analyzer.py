@@ -186,12 +186,17 @@ class MetricAnalyzer:
 
         if not retrain_predictors:
             self.logger.info(
-                "[%s] No predictors need retraining at this time.", "analyzer"
+                "[%s] Metric %s has no predictors need retraining at this time.",
+                "analyzer",
+                self.metric_promql,
             )
             return
 
         self.logger.info(
-            "[%s] Retraining %s predictors.", "analyzer", len(retrain_predictors)
+            "[%s] Retraining metric %s's %s predictors.",
+            "analyzer",
+            self.metric_promql,
+            len(retrain_predictors),
         )
 
         # 直接将 retrain_predictors 列表传递给 train_model_async
@@ -222,11 +227,14 @@ class MetricAnalyzer:
             )
 
             if len(current_series) == 0:
-                self.logger.info("no series to add")
+                self.logger.info("metric: %s no series to add", self.metric_promql)
                 return
 
             self.logger.info(
-                "[%s] got %s series total", "analyzer", len(current_series)
+                "[%s] Metric %s got %s series total",
+                "analyzer",
+                self.metric_promql,
+                len(current_series),
             )
 
             new_predictors = []
@@ -257,8 +265,9 @@ class MetricAnalyzer:
             for series in current_series:
                 if CONST_METRIC_NAME_LABEL_KEY not in series["metric"]:
                     raise ValueError(
-                        "[%s] metric %s has no %s",
+                        "[%s] metric %s series %s has no %s",
                         "analyzer",
+                        self.metric_promql,
                         series["metric"],
                         CONST_METRIC_NAME_LABEL_KEY,
                     )
@@ -271,7 +280,11 @@ class MetricAnalyzer:
 
                 if not self.same_label_keys(labels.keys()):
                     self.logger.warning(
-                        "[%s] label keys not match: %s", "analyzer", labels.keys()
+                        "[%s] metric %s series %s label keys not match: %s",
+                        "analyzer",
+                        self.metric_promql,
+                        series["metric"],
+                        labels.keys(),
                     )
                     continue
 
@@ -279,26 +292,32 @@ class MetricAnalyzer:
                     metric_name, labels, self.rolling_data_window_size
                 ):
                     self.logger.warning(
-                        "[%s] data is not ready(%s) to train for metric: %s series: %s, skip training",
+                        "[%s] metric: %s series: %s data is not ready(time window: %s) to train, skip training",
                         "analyzer",
-                        self.rolling_data_window_size,
                         self.metric_promql,
                         series["metric"],
+                        self.rolling_data_window_size,
                     )
                     continue
                 else:
                     self.logger.info(
-                        "[%s] data is ready(%s) to train for metric: %s series: %s, start training",
+                        "[%s] metric: %s series: %s data is ready(time window: %s) to train, start training",
                         "analyzer",
-                        self.rolling_data_window_size,
                         self.metric_promql,
                         series["metric"],
+                        self.rolling_data_window_size,
                     )
 
                 series_label_hash = hash(frozenset(labels.items()))
                 with self.series_lock:
                     if series_label_hash not in self.series_predictors:
-                        self.logger.info("[%s] got new series: %s", "analyzer", series)
+                        self.logger.info(
+                            "[%s] metric: %s series: %s got new series: %s",
+                            "analyzer",
+                            self.metric_promql,
+                            series["metric"],
+                            series,
+                        )
                         new_predictor = self.new_model_predictor(
                             series,
                             series_label_hash,
@@ -338,11 +357,14 @@ class MetricAnalyzer:
             )
 
             if len(current_series) == 0:
-                self.logger.info("no series to add")
+                self.logger.info("metric: %s no series to add", self.metric_promql)
                 return
 
             self.logger.info(
-                "[%s] got %s series total", "analyzer", len(current_series)
+                "[%s] metric: %s got %s series total",
+                "analyzer",
+                self.metric_promql,
+                len(current_series),
             )
 
             new_predictors = []
@@ -387,34 +409,39 @@ class MetricAnalyzer:
 
                 if not self.same_label_keys(labels.keys()):
                     self.logger.warning(
-                        "[%s] label keys not match: %s", "analyzer", labels.keys()
+                        "[%s] metric: %s series: %s label keys not match: %s",
+                        "analyzer",
+                        self.metric_promql,
+                        series["metric"],
+                        labels.keys(),
                     )
                     continue
 
-                if not self.series_data_ready(
+                data_is_ready = self.series_data_ready(
                     metric_name, labels, self.rolling_data_window_size
-                ):
-                    self.logger.warning(
-                        "[%s] data is not ready(%s) to train for metric: %s series: %s, skip training",
-                        "analyzer",
-                        self.rolling_data_window_size,
-                        self.metric_promql,
-                        series["metric"],
-                    )
-                    continue
-                else:
-                    self.logger.info(
-                        "[%s] data is ready(%s) to train for metric: %s series: %s, start training",
-                        "analyzer",
-                        self.rolling_data_window_size,
-                        self.metric_promql,
-                        series["metric"],
-                    )
+                )
 
                 series_label_hash = hash(frozenset(labels.items()))
                 with self.series_lock:
                     if series_label_hash not in self.series_predictors:
                         self.logger.info("[%s] got new series: %s", "analyzer", series)
+                        if not data_is_ready:
+                            self.logger.warning(
+                                "[%s] metric: %s series: %s data is not ready (time window: %s) to train, skip training",
+                                "analyzer",
+                                self.metric_promql,
+                                series["metric"],
+                                self.rolling_data_window_size,
+                            )
+                            continue
+                        else:
+                            self.logger.info(
+                                "[%s] metric: %s series: %s data is ready (time window: %s) to train, start training",
+                                "analyzer",
+                                self.metric_promql,
+                                series["metric"],
+                                self.rolling_data_window_size,
+                            )
                         new_predictor = self.new_model_predictor(
                             series,
                             series_label_hash,
@@ -438,12 +465,17 @@ class MetricAnalyzer:
 
             else:
                 self.logger.info(
-                    "[%s] Metric [%s] all series' predictors already exists. Skipping training.",
+                    "[%s] Metric [%s] all series' predictors already exists. Skipping training",
                     "analyzer",
                     self.metric_name,
                 )
         except Exception as e:
-            self.logger.error("[%s] Error syncing new series: %s", "analyzer", str(e))
+            self.logger.error(
+                "[%s] Error syncing new series for metric: %s: %s",
+                "analyzer",
+                self.metric_promql,
+                str(e),
+            )
 
     def new_model_predictor(
         self,
@@ -500,12 +532,14 @@ class MetricAnalyzer:
         """Asynchronously train the machine learning models."""
         if not predictors:
             self.logger.warning(
-                "[%s] No series to train. Skipping training.", "analyzer"
+                "[%s] Metric %s has no series to train. Skipping training.",
+                "analyzer",
+                self.metric_promql,
             )
             return
 
         self.logger.info(
-            "[%s] Training models asynchronously with asyncio for metric %s's %d new series",
+            "[%s] Training models asynchronously for metric %s's %d new series",
             "analyzer",
             self.metric_promql,
             len(predictors),
@@ -520,7 +554,7 @@ class MetricAnalyzer:
         with self.series_lock:
             if self.is_stopped:
                 self.logger.info(
-                    "[%s] promql analyzer for %s already stopped",
+                    "[%s] promql analyzer for metric %s already stopped",
                     "analyzer",
                     self.metric_promql,
                 )
@@ -532,7 +566,11 @@ class MetricAnalyzer:
         # Update global PREDICTOR_MODEL_LIST
         with self.series_lock:
             if len(result) == 0:
-                self.logger.info("[%s] no predictor trained", "analyzer")
+                self.logger.info(
+                    "[%s] Metric %s has no predictor trained",
+                    "analyzer",
+                    self.metric_promql,
+                )
                 return
 
             for predictor in result:
@@ -540,7 +578,10 @@ class MetricAnalyzer:
                     self.series_predictors[predictor.get_series_hash()] = predictor
 
             self.logger.info(
-                "[%s] %s predictors added", "analyzer", len(self.series_predictors)
+                "[%s] Metric %s has %d predictors added",
+                "analyzer",
+                self.metric_promql,
+                len(self.series_predictors),
             )
 
     async def train_individual_model_async(
@@ -553,7 +594,13 @@ class MetricAnalyzer:
                 None, self.train_model, predictor_model, initial_run
             )
         except Exception as e:
-            self.logger.error(f"Error training model: {str(e)}")
+            self.logger.error(
+                "[%s] Error training model for metric %s series %s: %s",
+                "analyzer",
+                self.metric_promql,
+                predictor_model.metric.label_config,
+                str(e),
+            )
             return None
 
     def train_model(
@@ -583,9 +630,10 @@ class MetricAnalyzer:
         predictor_model.train(new_series_data, self.retraining_interval_minutes + 10)
 
         self.logger.info(
-            "Total Training time taken = %s, for metric: %s %s",
+            "[%s] Total Training time taken = %s, for metric: %s series: %s",
+            "analyzer",
             str(datetime.now() - start_time),
-            series_to_predict.metric_name,
+            self.metric_promql,
             series_to_predict.label_config,
         )
         return predictor_model
@@ -621,13 +669,17 @@ class MetricAnalyzer:
             "analyzer",
         )
 
-        # 使用 Job 对象来控制任务
-        sync_job = schedule.every(self.sync_new_series_interval_seconds).seconds
-        def resync_task():
-            asyncio.run(self.resync_series())
-            # 任务执行完毕后，重新设置下次执行时间
-            sync_job.next_run = datetime.now() + timedelta(seconds=self.sync_new_series_interval_seconds)
-        sync_job.do(resync_task)
+        # 直接使用 schedule 的调度功能
+        schedule.every(self.sync_new_series_interval_seconds).seconds.do(
+            lambda: asyncio.run(self.resync_series())
+        )
+
+        self.logger.info(
+            "[%s] Scheduled sync series every %s seconds for metric: %s",
+            "analyzer",
+            self.sync_new_series_interval_seconds,
+            self.metric_promql,
+        )
 
         while not self.stop_event.is_set():
             schedule.run_pending()

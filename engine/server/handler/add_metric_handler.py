@@ -24,6 +24,10 @@ class AddMetricHandler(tornado.web.RequestHandler):
                     f"Received new metric for training: {metric_promql}, model: {model_name}"
                 )
 
+                # sync_new_series_interval_seconds must be greater than 300 seconds
+                if sync_new_series_interval_seconds < 300:
+                    sync_new_series_interval_seconds = 300
+
                 self.manager.add_metric(
                     group,
                     detection_name,

@@ -64,6 +64,7 @@ class AnalyzeManager:
                 if g == group:
                     self.delete_metric(g, d)
 
+    # 
     def add_metric(
         self,
         group: str,
@@ -111,6 +112,7 @@ class AnalyzeManager:
             self.group_analyzers[(group, detection_name)] = analyzer
         thread.start()
 
+    # TODO 实现：让predict不加锁，可以容忍旧数据，只要不报错就行
     async def predict(self):
 
         if len(self.group_analyzers) == 0:
