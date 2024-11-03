@@ -114,23 +114,32 @@ class AnalyzeManager:
 
     # TODO 实现：让predict不加锁，可以容忍旧数据，只要不报错就行
     async def predict(self):
-
-        if len(self.group_analyzers) == 0:
+        # 快速检查是否有分析器
+        analyzer_count = len(self.group_analyzers)
+        if analyzer_count == 0:
             self.logger.info("[%s] No analyzers to predict", "manager")
             return
 
         self.logger.info(
             "[%s] predicting series values for %s analyzers",
             "manager",
-            len(self.group_analyzers),
+            analyzer_count
         )
 
+        # 不加锁直接创建任务，即使列表在过程中被修改也没关系
         tasks = []
-        with self.lock:
+        try:
             for analyzer in self.group_analyzers.values():
                 tasks.append(asyncio.create_task(analyzer.predict_all_series_values()))
+        except Exception as e:
+            self.logger.error("[%s] Error creating prediction tasks: %s", "manager", str(e))
 
-        await asyncio.gather(*tasks)
+        # 等待所有预测任务完成
+        if tasks:
+            try:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            except Exception as e:
+                self.logger.error("[%s] Error during prediction: %s", "manager", str(e))
 
     def set_rolling_data_window_size(
         self, metric_promql: str, rolling_data_window_size: str

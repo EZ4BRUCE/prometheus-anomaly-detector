@@ -100,76 +100,59 @@ class MetricAnalyzer:
     async def predict_all_series_values(self):
 
         now = datetime.now()
+        
+        # 快速检查是否有预测器
+        if len(self.series_predictors) == 0:
+            self.logger.warning(
+                "[%s] %s(id: %s) no series to predict",
+                "analyzer",
+                self.metric_promql,
+                id(self),
+            )
+            return
 
-        with self.series_lock:
-            if len(self.series_predictors) == 0:
-                self.logger.warning(
-                    "[%s] %s(id: %s) no series to predict",
-                    "analyzer",
-                    self.metric_promql,
-                    id(self),
-                )
-                return
-            should_delete_predictors = []
-            for hash, predictor in self.series_predictors.items():
+        # 不加锁直接预测，即使数据可能稍旧也没关系
+        should_delete_predictors = []
+        for hash, predictor in self.series_predictors.items():
+            try:
                 ok = predictor.predict(now)
                 if not ok:
-                    self.logger.info(
-                        "[%s] predictor %s (%s %s) is outdated, delete",
-                        "analyzer",
-                        hash,
-                        predictor.metric.metric_name,
-                        predictor.metric.label_config,
-                    )
                     should_delete_predictors.append(hash)
-
-            for hash in should_delete_predictors:
-                predictor = self.series_predictors[hash]
-                delete_series_yhat = {
-                    **predictor.metric.label_config,
-                    "value_type": "yhat",
-                    "model_name": predictor.model_name,
-                    "metric_type": "anomaly-detection",
-                    "origin_metric_name": predictor.metric.metric_name,
-                }
-                delete_series_anomaly = {
-                    **predictor.metric.label_config,
-                    "value_type": "anomaly",
-                    "model_name": predictor.model_name,
-                    "metric_type": "anomaly-detection",
-                    "origin_metric_name": predictor.metric.metric_name,
-                }
-                delete_series_yhat_upper = {
-                    **predictor.metric.label_config,
-                    "value_type": "yhat_upper",
-                    "model_name": predictor.model_name,
-                    "metric_type": "anomaly-detection",
-                    "origin_metric_name": predictor.metric.metric_name,
-                }
-                delete_series_yhat_lower = {
-                    **predictor.metric.label_config,
-                    "value_type": "yhat_lower",
-                    "model_name": predictor.model_name,
-                    "metric_type": "anomaly-detection",
-                    "origin_metric_name": predictor.metric.metric_name,
-                }
-
-                self.gauge_metric.remove(
-                    *self.gauge_metric.labels(**delete_series_yhat)._labelvalues
+            except Exception as e:
+                self.logger.error(
+                    "[%s] Error predicting for series %s: %s",
+                    "analyzer",
+                    hash,
+                    str(e)
                 )
 
-                self.gauge_metric.remove(
-                    *self.gauge_metric.labels(**delete_series_anomaly)._labelvalues
-                )
-
-                self.gauge_metric.remove(
-                    *self.gauge_metric.labels(**delete_series_yhat_upper)._labelvalues
-                )
-
-                self.gauge_metric.remove(
-                    *self.gauge_metric.labels(**delete_series_yhat_lower)._labelvalues
-                )
-                del self.series_predictors[hash]
+        # 只在需要删除时加锁
+        if should_delete_predictors:
+            with self.series_lock:
+                for hash in should_delete_predictors:
+                    if hash in self.series_predictors:
+                        predictor = self.series_predictors[hash]
+                        try:
+                            # 清理相关的指标
+                            for value_type in ["yhat", "anomaly", "yhat_upper", "yhat_lower"]:
+                                delete_series = {
+                                    **predictor.metric.label_config,
+                                    "value_type": value_type,
+                                    "model_name": predictor.model_name,
+                                    "metric_type": "anomaly-detection",
+                                    "origin_metric_name": predictor.metric.metric_name,
+                                }
+                                self.gauge_metric.remove(
+                                    *self.gauge_metric.labels(**delete_series)._labelvalues
+                                )
+                            del self.series_predictors[hash]
+                        except Exception as e:
+                            self.logger.error(
+                                "[%s] Error cleaning up predictor %s: %s",
+                                "analyzer",
+                                hash,
+                                str(e)
+                            )
 
     async def check_and_retrain_predictors(self):
         """Asynchronously retrain the predictors that need updating."""
@@ -561,19 +544,34 @@ class MetricAnalyzer:
                 return
 
         # Run all tasks concurrently
-        result = await asyncio.gather(*tasks)
+        result = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Filter out exceptions and failed results
+        valid_predictors = [
+            predictor for predictor in result 
+            if predictor is not None and not isinstance(predictor, Exception)
+        ]
+
+        # Log any exceptions that occurred
+        for r in result:
+            if isinstance(r, Exception):
+                self.logger.error(
+                    "[%s] Error during model training: %s",
+                    "analyzer",
+                    str(r)
+                )
 
         # Update global PREDICTOR_MODEL_LIST
         with self.series_lock:
-            if len(result) == 0:
+            if len(valid_predictors) == 0:
                 self.logger.info(
-                    "[%s] Metric %s has no predictor trained",
+                    "[%s] Metric %s has no predictor trained successfully",
                     "analyzer",
                     self.metric_promql,
                 )
                 return
 
-            for predictor in result:
+            for predictor in valid_predictors:
                 if predictor is not None:
                     self.series_predictors[predictor.get_series_hash()] = predictor
 
