@@ -72,8 +72,10 @@ class ProphetPredictor(SeriesPredictor):
         )
 
         self.logger.info(
-            "[%s] training data range: %s - %s",
+            "[%s] Metric %s series %s training data range: %s - %s",
             "prophet",
+            self.metric.metric_name,
+            self.metric.label_config,
             self.metric.start_time,
             self.metric.end_time,
         )
@@ -135,26 +137,26 @@ class ProphetPredictor(SeriesPredictor):
                 prediction[column_name].iloc[0]
             )
 
-            # Calculate for an anomaly (can be different for different models)
-            anomaly = 1
-            if (
-                current_metric_value.metric_values["y"].iloc[0]
-                < prediction["yhat_upper"].iloc[0]
-            ) and (
-                current_metric_value.metric_values["y"].iloc[0]
-                > prediction["yhat_lower"].iloc[0]
-            ):
-                anomaly = 0
+        # Calculate for an anomaly (can be different for different models)
+        anomaly = 1
+        if (
+            current_metric_value.metric_values["y"].iloc[0]
+            < prediction["yhat_upper"].iloc[0]
+        ) and (
+            current_metric_value.metric_values["y"].iloc[0]
+            > prediction["yhat_lower"].iloc[0]
+        ):
+            anomaly = 0
 
-            public_labels_anomaly = {
-                **self.metric.label_config,
-                "value_type": "anomaly",
-                "model_name": self.model_name,
-                "metric_type": "anomaly-detection",
-                "origin_metric_name": self.metric.metric_name,
-            }
+        public_labels_anomaly = {
+            **self.metric.label_config,
+            "value_type": "anomaly",
+            "model_name": self.model_name,
+            "metric_type": "anomaly-detection",
+            "origin_metric_name": self.metric.metric_name,
+        }
 
-            # create a new time series that has value_type=anomaly
-            # this value is 1 if an anomaly is found 0 if not
-            self.gauge_metric.labels(**public_labels_anomaly).set(anomaly)
-            return True
+        # create a new time series that has value_type=anomaly
+        # this value is 1 if an anomaly is found 0 if not
+        self.gauge_metric.labels(**public_labels_anomaly).set(anomaly)
+        return True
