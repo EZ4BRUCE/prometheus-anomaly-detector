@@ -24,8 +24,8 @@ CONST_METRIC_NAME_LABEL_KEY = "__name__"
 
 class MetricAnalyzer:
     
-    Group:str = None
-    DetectionName:str = None
+    group:str = None
+    detection_name:str = None
 
     logger: logging.Logger = None
     cluster_mode: bool = False
@@ -67,8 +67,8 @@ class MetricAnalyzer:
         retraining_interval_minutes,
         sync_new_series_interval_seconds,
     ):
-        self.Group = group
-        self.DetectionName = detection_name
+        self.group = group
+        self.detection_name = detection_name
         self.series_predictors = {}
         self.logger = logger
         self.cluster_mode = cluster_mode
@@ -657,27 +657,36 @@ class MetricAnalyzer:
             )
             return
 
-        # Schedule retrain_predictors to run every retraining_interval_minutes
-        schedule.every(90).seconds.do(
-            lambda: asyncio.run(self.check_and_retrain_predictors())
-        )
+        # 为每个schedule添加唯一标识
+        retrain_job_tag = f"retrain_predictors_{self.group}_{self.detection_name}"
+        sync_job_tag = f"sync_series_{self.group}_{self.detection_name}"
+        
+        # 检查是否已存在相同标记的任务
+        existing_jobs = [job for job in schedule.get_jobs() if job.tags]
+        existing_tags = [tag for job in existing_jobs for tag in job.tags]
 
-        self.logger.info(
-            "[%s] Scheduled check predictors retrain schedule every 90 seconds.",
-            "analyzer",
-        )
+        # 只在任务不存在时创建新的schedule
+        if retrain_job_tag not in existing_tags:
+            schedule.every(90).seconds.do(
+                lambda: asyncio.run(self.check_and_retrain_predictors())
+            ).tag(retrain_job_tag)
 
-        # 直接使用 schedule 的调度功能
-        schedule.every(self.sync_new_series_interval_seconds).seconds.do(
-            lambda: asyncio.run(self.resync_series())
-        )
+            self.logger.info(
+                "[%s] Scheduled check predictors retrain schedule every 90 seconds.",
+                "analyzer",
+            )
 
-        self.logger.info(
-            "[%s] Scheduled sync series every %s seconds for metric: %s",
-            "analyzer",
-            self.sync_new_series_interval_seconds,
-            self.metric_promql,
-        )
+        if sync_job_tag not in existing_tags:
+            schedule.every(self.sync_new_series_interval_seconds).seconds.do(
+                lambda: asyncio.run(self.resync_series())
+            ).tag(sync_job_tag)
+
+            self.logger.info(
+                "[%s] Scheduled sync series every %s seconds for metric: %s",
+                "analyzer",
+                self.sync_new_series_interval_seconds,
+                self.metric_promql,
+            )
 
         while not self.stop_event.is_set():
             schedule.run_pending()

@@ -37,15 +37,17 @@ class AnalyzeManager:
                 if key[0] == group_name:
                     analyzer = self.group_analyzers[key]
                     with analyzer.series_lock:
-                        jobs.append({
-                            "group": key[0],
-                            "detection_name": key[1],
-                            "metric": analyzer.metric_promql,
-                            "model": analyzer.model_name,
-                            "window_size": analyzer.rolling_data_window_size,
-                            "retraining_interval_minutes": analyzer.retraining_interval_minutes,
-                            "sync_new_series_interval_seconds": analyzer.sync_new_series_interval_seconds,
-                        })
+                        jobs.append(
+                            {
+                                "group": key[0],
+                                "detection_name": key[1],
+                                "metric": analyzer.metric_promql,
+                                "model": analyzer.model_name,
+                                "window_size": analyzer.rolling_data_window_size,
+                                "retraining_interval_minutes": analyzer.retraining_interval_minutes,
+                                "sync_new_series_interval_seconds": analyzer.sync_new_series_interval_seconds,
+                            }
+                        )
             return jobs
 
     def delete_metric(self, group: str, detection_names: list[str]):
@@ -55,20 +57,23 @@ class AnalyzeManager:
                     self.group_analyzers[(group, detection_name)].stop()
                     del self.group_analyzers[(group, detection_name)]
                     self.logger.info(
-                        "[%s] promql analyzer for %s deleted", "manager", (group, detection_name)
+                        "[%s] promql analyzer for %s deleted",
+                        "manager",
+                        (group, detection_name),
                     )
                 else:
-                    self.logger.warning(    
-                        "[%s] promql analyzer for %s not found", "manager", (group, detection_name)
+                    self.logger.warning(
+                        "[%s] promql analyzer for %s not found",
+                        "manager",
+                        (group, detection_name),
                     )
 
     def delete_group(self, group: str):
         with self.lock:
-            for (g, d) in self.group_analyzers.keys():
+            for g, d in self.group_analyzers.keys():
                 if g == group:
                     self.delete_metric(g, d)
 
-    # 
     def add_metric(
         self,
         group: str,
@@ -83,8 +88,8 @@ class AnalyzeManager:
         with self.lock:
             if (group, detection_name) in self.group_analyzers:
                 self.logger.info(
-                    "[%s] promql analyzer for %s %s already exists, skip init",
-                    "analyzer",
+                    "[%s] promql analyzer for %s metricpromql %s already exists, skip init",
+                    "manager",
                     (group, detection_name),
                     metric_promql,
                 )
@@ -124,9 +129,7 @@ class AnalyzeManager:
             return
 
         self.logger.info(
-            "[%s] predicting series values for %s analyzers",
-            "manager",
-            analyzer_count
+            "[%s] predicting series values for %s analyzers", "manager", analyzer_count
         )
 
         # 不加锁直接创建任务，即使列表在过程中被修改也没关系
@@ -135,7 +138,9 @@ class AnalyzeManager:
             for analyzer in self.group_analyzers.values():
                 tasks.append(asyncio.create_task(analyzer.predict_all_series_values()))
         except Exception as e:
-            self.logger.error("[%s] Error creating prediction tasks: %s", "manager", str(e))
+            self.logger.error(
+                "[%s] Error creating prediction tasks: %s", "manager", str(e)
+            )
 
         # 等待所有预测任务完成
         if tasks:
