@@ -21,17 +21,12 @@ class DeleteMetricHandler(tornado.web.RequestHandler):
             detection_names = data.get("detection_names")
             if not group or not isinstance(group, str):
                 raise ValueError("Invalid or missing 'group' parameter.")
-            
-            
+
             if detection_names is None:
-                self.logger.info(
-                    f"Deleting group: {group}"
-                )
+                self.logger.info(f"Deleting group: {group}")
                 self.manager.delete_group(group)
             else:
-                self.logger.info(
-                    f"Deleting metric: {group}, {detection_names}"
-                )
+                self.logger.info(f"Deleting metric: {group}, {detection_names}")
                 self.manager.delete_metric(group, detection_names)
 
             self.write(
@@ -45,7 +40,5 @@ class DeleteMetricHandler(tornado.web.RequestHandler):
             self.set_status(400)
             self.write({"status": "error", "message": "Invalid JSON"})
         except Exception as e:
-            self.logger.error(f"Error adding new metric: {str(e)}")
+            self.logger.error(f"Error deleting metric: {str(e)}")
             self.write({"status": "error", "message": str(e)})
-
-
