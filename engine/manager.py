@@ -50,29 +50,30 @@ class AnalyzeManager:
                         )
             return jobs
 
-    def delete_metric(self, group: str, detection_names: list[str]):
-        with self.lock:
-            for detection_name in detection_names:
-                if (group, detection_name) in self.group_analyzers:
-                    self.group_analyzers[(group, detection_name)].stop()
-                    del self.group_analyzers[(group, detection_name)]
-                    self.logger.info(
-                        "[%s] promql analyzer for %s deleted",
-                        "manager",
-                        (group, detection_name),
-                    )
-                else:
-                    self.logger.warning(
-                        "[%s] promql analyzer for %s not found",
-                        "manager",
-                        (group, detection_name),
-                    )
+    def delete_metric_list(self, group: str, detection_names: list[str]):
+        for detection_name in detection_names:
+            if (group, detection_name) in self.group_analyzers:
+                self.group_analyzers[(group, detection_name)].stop()
+                del self.group_analyzers[(group, detection_name)]
+                self.logger.info(
+                    "[%s] promql analyzer for %s deleted",
+                    "manager",
+                    (group, detection_name),
+                )
+            else:
+                self.logger.warning(
+                    "[%s] promql analyzer for %s not found",
+                    "manager",
+                    (group, detection_name),
+                )
 
     def delete_group(self, group: str):
         with self.lock:
-            for g, d in self.group_analyzers.keys():
+            list_to_delete = []
+            for (g,d) in self.group_analyzers.keys():
                 if g == group:
-                    self.delete_metric(g, d)
+                    list_to_delete.append(d)
+            self.delete_metric_list(group, list_to_delete)
 
     def add_metric(
         self,

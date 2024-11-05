@@ -1,5 +1,4 @@
 import json
-import re
 import tornado.web
 from engine.manager import AnalyzeManager
 
@@ -24,10 +23,11 @@ class DeleteMetricHandler(tornado.web.RequestHandler):
 
             if detection_names is None:
                 self.logger.info(f"Deleting group: {group}")
-                self.manager.delete_group(group)
+                self.manager.delete_group(group)    
             else:
                 self.logger.info(f"Deleting metric: {group}, {detection_names}")
-                self.manager.delete_metric(group, detection_names)
+                with self.manager.lock:
+                    self.manager.delete_metric_list(group, detection_names)
 
             self.write(
                 {

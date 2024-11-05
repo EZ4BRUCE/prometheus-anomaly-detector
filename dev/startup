@@ -45,6 +45,10 @@ curl -X POST http://localhost:8789/delete_metric \
      -H "Content-Type: application/json" \
      -d '{"group": "controlplane_billing", "detection_names": ["account_billing_balance", "account_cu"]}'
 
+curl -X POST http://localhost:8789/delete_metric \
+     -H "Content-Type: application/json" \
+     -d '{"group": "controlplane_billing"}'
+
 curl -X POST http://localhost:8789/add_metric \
      -H "Content-Type: application/json" \
      -d '{"group": "controlplane_billing", "detection_name": "account_billing_balance", "metric": "controlplane_billing_balance{has_paid_instance=\"1\"}", "model": "prophet", "window_size": "2h", "sync_new_series_interval_seconds": 1200, "retraining_interval_minutes": 50}'
@@ -63,3 +67,19 @@ curl -X POST http://localhost:8789/add_metric \
      "sync_new_series_interval_seconds": 1200, 
      "retraining_interval_minutes": 50
 }
+
+dev unit 
+
+
+time=2024-11-05T06:46:55.992000 level=INFO location=analyzer.py:524:train_model_async msg="[analyzer] Training models asynchronously for metric account_tps's 2 new series" 
+time=2024-11-05T06:46:55.992000 level=INFO location=analyzer.py:539:train_model_async msg="[analyzer] promql analyzer for metric account_tps already stopped" 
+/app/engine/analyzer.py:186: RuntimeWarning: coroutine 'MetricAnalyzer.train_individual_model_async' was never awaited
+  await self.train_model_async(retrain_predictors, initial_run=False)
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+
+time=2024-11-05T07:06:26.164000 level=ERROR location=analyzer.py:456:sync_new_series_async msg="[analyzer] Error syncing new series for metric: account_tps: Duplicated timeseries in CollectorRegistry: {'account_tps_prophet'}"
+
+1. 删除policy死锁？
+2. resync有真的时候失败
+3. retrain失败？（有没有retrain？retrain有没有用最新数据？）
+4. 修改步长和interval？
