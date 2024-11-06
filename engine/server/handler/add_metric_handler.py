@@ -18,11 +18,36 @@ class AddMetricHandler(tornado.web.RequestHandler):
             # Parse JSON body
             data_list = json.loads(self.request.body)
             for data in data_list:
-                metric_promql, group, detection_name, model_name, window_size, retraining_interval_minutes, sync_new_series_interval_seconds = validate_parameters(data)
+                (
+                    metric_promql,
+                    group,
+                    detection_name,
+                    model_name,
+                    window_size,
+                    retraining_interval_minutes,
+                    sync_new_series_interval_seconds,
+                ) = validate_parameters(data)
 
-                self.logger.info(
-                    f"Received new metric for training: {metric_promql}, model: {model_name}"
-                )
+                future_offset = data.get("future_offset")
+                if future_offset is not None:
+                    if not isinstance(future_offset, str):
+                        raise ValueError(
+                            "Invalid or missing 'future_offset' parameter."
+                        )
+                    self.logger.info(
+                        "[%s] Received new metric for training: %s, model: %s with future offset: %s",
+                        "server",
+                        metric_promql,
+                        model_name,
+                        future_offset,
+                    )
+                else:
+                    self.logger.info(
+                        "[%s] Received new metric for training: %s, model: %s",
+                        "server",
+                        metric_promql,
+                        model_name,
+                    )
 
                 # sync_new_series_interval_seconds must be greater than 300 seconds
                 if sync_new_series_interval_seconds < 300:
@@ -34,6 +59,7 @@ class AddMetricHandler(tornado.web.RequestHandler):
                     metric_promql,
                     model_name,
                     self.manager.prometheus_url,
+                    future_offset,
                     window_size,
                     retraining_interval_minutes,
                     sync_new_series_interval_seconds,
@@ -54,7 +80,6 @@ class AddMetricHandler(tornado.web.RequestHandler):
             self.write({"status": "error", "message": str(e)})
 
 
-
 def validate_parameters(data):
     """Validate the input parameters."""
     # Validate new_metric
@@ -73,7 +98,7 @@ def validate_parameters(data):
     # Validate group
     group = data.get("group")
     if not group or not isinstance(group, str):
-        raise ValueError("Invalid or missing 'group' parameter.")   
+        raise ValueError("Invalid or missing 'group' parameter.")
 
     # Validate detection_name
     detection_name = data.get("detection_name")
@@ -90,15 +115,29 @@ def validate_parameters(data):
         raise ValueError(
             "Invalid or missing 'window_size' parameter. Must be a string like '10d', '5h', or '30m'."
         )
-        
-    # Validate retraining_interval_minutes  
+
+    # Validate retraining_interval_minutes
     retraining_interval_minutes = data.get("retraining_interval_minutes")
-    if not retraining_interval_minutes or not isinstance(retraining_interval_minutes, int):
+    if not retraining_interval_minutes or not isinstance(
+        retraining_interval_minutes, int
+    ):
         raise ValueError("Invalid or missing 'retraining_interval_minutes' parameter.")
-    
+
     # Validate sync_new_series_interval_seconds
     sync_new_series_interval_seconds = data.get("sync_new_series_interval_seconds")
-    if not sync_new_series_interval_seconds or not isinstance(sync_new_series_interval_seconds, int):
-        raise ValueError("Invalid or missing 'sync_new_series_interval_seconds' parameter.")
+    if not sync_new_series_interval_seconds or not isinstance(
+        sync_new_series_interval_seconds, int
+    ):
+        raise ValueError(
+            "Invalid or missing 'sync_new_series_interval_seconds' parameter."
+        )
 
-    return new_metric, group, detection_name, model_name, window_size, retraining_interval_minutes, sync_new_series_interval_seconds
+    return (
+        new_metric,
+        group,
+        detection_name,
+        model_name,
+        window_size,
+        retraining_interval_minutes,
+        sync_new_series_interval_seconds,
+    )

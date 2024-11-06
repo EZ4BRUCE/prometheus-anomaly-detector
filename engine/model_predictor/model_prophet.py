@@ -8,22 +8,14 @@ from engine.model_predictor.model_predictor import SeriesPredictor
 import threading
 from prometheus_client import Gauge
 from prometheus_api_client.utils import parse_timedelta
+import pandas as pd
 
 
 class ProphetPredictor(SeriesPredictor):
     """docstring for Predictor."""
 
-    logger = None
     model_name = "prophet"
     model_description = "Forecasted value from Prophet model"
-    model = None
-    predicted_df = None
-    metric = None
-    series_hash = None
-    last_retrain_time = None
-    prometheus_client = None
-    gauge_metric: Gauge = None
-    lock = threading.Lock()
 
     def __init__(
         self,
@@ -32,7 +24,8 @@ class ProphetPredictor(SeriesPredictor):
         series_hash,
         prometheus_url,
         gauge_metric: Gauge,
-        rolling_data_window_size="10d",
+        rolling_data_window_size: str = "10d",
+        future_offset: str = None,
     ):
         """Initialize the Metric object."""
         self.logger = logger
@@ -43,7 +36,12 @@ class ProphetPredictor(SeriesPredictor):
             url=prometheus_url,
             disable_ssl=True,
         )
+        self.future_offset = future_offset
+        self.model = None
+        self.predicted_df = None
+        self.last_retrain_time = None
         self.gauge_metric = gauge_metric
+        self.lock = threading.Lock()
 
     def get_series_hash(self):
         return self.series_hash
@@ -60,6 +58,14 @@ class ProphetPredictor(SeriesPredictor):
     def train(self, metric_data=None, prediction_duration=15):
         """Train the Prophet model and store the predictions in predicted_df."""
         prediction_freq = "1min"  # Use lowercase 'min'
+
+        # 将 future_offset 转换为分钟数
+        if self.future_offset:
+            future_offset_minutes = (
+                pd.to_timedelta(self.future_offset).total_seconds() / 60
+            )
+            prediction_duration = prediction_duration + int(future_offset_minutes)
+
         # convert incoming metric to Metric Object
         if metric_data:
             # because the rolling_data_window_size is set, this df should not bloat
@@ -109,15 +115,7 @@ class ProphetPredictor(SeriesPredictor):
 
     def predict(self, time: datetime) -> bool:
         # get the current metric value so that it can be compared with the predicted values
-        current_metric_data = self.prometheus_client.get_current_metric_value(
-            self.metric.metric_name,
-            self.metric.label_config,
-        )
 
-        if len(current_metric_data) == 0:
-            return False
-
-        current_metric_value = Metric(current_metric_data[0])
 
         prediction = self.predict_value(time)
 
@@ -133,30 +131,44 @@ class ProphetPredictor(SeriesPredictor):
                 "origin_metric_name": self.metric.metric_name,
             }
 
+            if self.future_offset is not None:
+                public_labels_perdicted["future_offset"] = self.future_offset
+
             self.gauge_metric.labels(**public_labels_perdicted).set(
                 prediction[column_name].iloc[0]
             )
 
         # Calculate for an anomaly (can be different for different models)
-        anomaly = 1
-        if (
-            current_metric_value.metric_values["y"].iloc[0]
-            < prediction["yhat_upper"].iloc[0]
-        ) and (
-            current_metric_value.metric_values["y"].iloc[0]
-            > prediction["yhat_lower"].iloc[0]
-        ):
-            anomaly = 0
 
-        public_labels_anomaly = {
-            **self.metric.label_config,
-            "value_type": "anomaly",
-            "model_name": self.model_name,
-            "metric_type": "anomaly-detection",
-            "origin_metric_name": self.metric.metric_name,
-        }
+        if self.future_offset is None:
+            current_metric_data = self.prometheus_client.get_current_metric_value(
+                self.metric.metric_name,
+                self.metric.label_config,
+            )
 
-        # create a new time series that has value_type=anomaly
-        # this value is 1 if an anomaly is found 0 if not
-        self.gauge_metric.labels(**public_labels_anomaly).set(anomaly)
+            if len(current_metric_data) == 0:
+                return False
+
+            current_metric_value = Metric(current_metric_data[0])
+            anomaly = 1
+            if (
+                current_metric_value.metric_values["y"].iloc[0]
+                < prediction["yhat_upper"].iloc[0]
+            ) and (
+                current_metric_value.metric_values["y"].iloc[0]
+                > prediction["yhat_lower"].iloc[0]
+            ):
+                anomaly = 0
+
+            public_labels_anomaly = {
+                **self.metric.label_config,
+                "value_type": "anomaly",
+                "model_name": self.model_name,
+                "metric_type": "anomaly-detection",
+                "origin_metric_name": self.metric.metric_name,
+            }
+
+            # create a new time series that has value_type=anomaly
+            # this value is 1 if an anomaly is found 0 if not
+            self.gauge_metric.labels(**public_labels_anomaly).set(anomaly)
         return True
