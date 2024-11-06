@@ -10,15 +10,15 @@ metrics:
     detection_name: account_billing_balance
     metric: user_balancehe
     model: prophet
-    sync_new_series_interval_seconds: 600
-    window_size: 6h
-    retraining_interval_minutes: 120
-  - group: controlplane_billing
-    detection_name: account_cu
-    metric: account_cu
-    model: prophet
-    sync_new_series_interval_seconds: 600
-    window_size: 6h
-    retraining_interval_minutes: 120
+    sync_new_series_interval_seconds: 60
+    window_size: 30m
+    retraining_interval_minutes: 300
+  # - group: controlplane_billing
+  #   detection_name: account_cu
+  #   metric: account_cu
+  #   model: prophet
+  #   sync_new_series_interval_seconds: 600
+  #   window_size: 6h
+  #   retraining_interval_minutes: 120
 
 
