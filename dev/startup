@@ -86,6 +86,8 @@ time=2024-11-05T07:06:26.164000 level=ERROR location=analyzer.py:456:sync_new_se
 3. retrain失败？（有没有retrain？retrain有没有用最新数据？）
 4. 修改步长和interval？
 
+如果选的时间太长，需要把步长调大，控制数据点的数量
+
 retrain失败
 
 2024-11-05 16:46:57.365	

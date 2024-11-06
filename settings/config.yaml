@@ -14,6 +14,7 @@ metrics:
     window_size: 30m
     retraining_interval_minutes: 300
     future_offset:
+    interval_width: 0.5
   - group: controlplane_billing
     detection_name: account_cu
     metric: account_cu
@@ -22,4 +23,4 @@ metrics:
     window_size: 6h
     retraining_interval_minutes: 120
     future_offset: 1h
-
+    interval_width: 1.0

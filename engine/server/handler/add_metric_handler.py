@@ -26,6 +26,7 @@ class AddMetricHandler(tornado.web.RequestHandler):
                     window_size,
                     retraining_interval_minutes,
                     sync_new_series_interval_seconds,
+                    interval_width,
                 ) = validate_parameters(data)
 
                 future_offset = data.get("future_offset")
@@ -63,6 +64,7 @@ class AddMetricHandler(tornado.web.RequestHandler):
                     window_size,
                     retraining_interval_minutes,
                     sync_new_series_interval_seconds,
+                    interval_width,
                 )
 
             self.write(
@@ -132,6 +134,13 @@ def validate_parameters(data):
             "Invalid or missing 'sync_new_series_interval_seconds' parameter."
         )
 
+    interval_width = data.get("interval_width")
+    if interval_width is not None:
+        if not isinstance(interval_width, float):
+            raise ValueError("Invalid or missing 'interval_width' parameter.")
+    else:
+        interval_width = 1.0
+
     return (
         new_metric,
         group,
@@ -140,4 +149,5 @@ def validate_parameters(data):
         window_size,
         retraining_interval_minutes,
         sync_new_series_interval_seconds,
+        interval_width,
     )

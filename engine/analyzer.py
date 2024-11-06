@@ -35,6 +35,7 @@ class MetricAnalyzer:
         rolling_data_window_size: str = "1d",
         retraining_interval_minutes: int = 120,
         sync_new_series_interval_seconds: int = 300,
+        interval_width: float = 1.0,
     ):
         self.group: str = group
         self.detection_name: str = detection_name
@@ -56,6 +57,7 @@ class MetricAnalyzer:
         self.series_predictors: dict[str, SeriesPredictor] = {}
         self.series_lock: threading.Lock = threading.Lock()
         self.future_offset: str = future_offset
+        self.interval_width: float = interval_width
         self.background_thread: threading.Thread = None
         self.stop_event: threading.Event = threading.Event()
         self.is_stopped: bool = False
@@ -316,6 +318,7 @@ class MetricAnalyzer:
                             self.gauge_metric,
                             self.rolling_data_window_size,
                             self.future_offset,
+                            self.interval_width,
                         )
                         new_predictors.append(new_predictor)
 
@@ -449,6 +452,7 @@ class MetricAnalyzer:
                             self.gauge_metric,
                             self.rolling_data_window_size,
                             self.future_offset,
+                            self.interval_width,
                         )
                         new_predictors.append(new_predictor)
 
@@ -486,6 +490,7 @@ class MetricAnalyzer:
         gauge_metric: Gauge,
         rolling_data_window_size,
         future_offset: str = None,
+        interval_width: float = 1.0,
     ) -> SeriesPredictor:
         if model_name == "prophet":
             return ProphetPredictor(
@@ -496,6 +501,7 @@ class MetricAnalyzer:
                 gauge_metric,
                 rolling_data_window_size,
                 future_offset,
+                interval_width,
             )
         elif model_name == "fourier":
             return FourierPredictor(

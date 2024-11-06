@@ -86,6 +86,7 @@ class AnalyzeManager:
         rolling_data_window_size: str,
         retraining_interval_minutes: int,
         sync_new_series_interval_seconds: int,
+        interval_width: float,
     ):
         with self.lock:
             if (group, detection_name) in self.group_analyzers:
@@ -109,6 +110,7 @@ class AnalyzeManager:
             rolling_data_window_size,
             retraining_interval_minutes,
             sync_new_series_interval_seconds,
+            interval_width,
         )
         thread = threading.Thread(target=analyzer.run)
         thread.daemon = True

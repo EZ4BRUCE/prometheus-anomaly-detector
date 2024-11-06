@@ -26,6 +26,7 @@ class ProphetPredictor(SeriesPredictor):
         gauge_metric: Gauge,
         rolling_data_window_size: str = "10d",
         future_offset: str = None,
+        interval_width: float = 1.0,
     ):
         """Initialize the Metric object."""
         self.logger = logger
@@ -36,6 +37,7 @@ class ProphetPredictor(SeriesPredictor):
             url=prometheus_url,
             disable_ssl=True,
         )
+        self.interval_width = interval_width
         self.future_offset = future_offset
         self.model = None
         self.predicted_df = None
@@ -74,16 +76,20 @@ class ProphetPredictor(SeriesPredictor):
         # Don't really need to store the model, as prophet models are not retrainable
         # But storing it as an example for other models that can be retrained
         self.model = Prophet(
-            daily_seasonality=True, weekly_seasonality=True, yearly_seasonality=True
+            daily_seasonality=True,
+            weekly_seasonality=True,
+            yearly_seasonality=True,
+            interval_width=self.interval_width,
         )
 
         self.logger.info(
-            "[%s] Metric %s series %s training data range: %s - %s",
+            "[%s] Start training metric %s series %s training data range: %s - %s interval_width: %s",
             "prophet",
             self.metric.metric_name,
             self.metric.label_config,
             self.metric.start_time,
             self.metric.end_time,
+            self.interval_width,
         )
 
         self.model.fit(self.metric.metric_values)
@@ -115,7 +121,6 @@ class ProphetPredictor(SeriesPredictor):
 
     def predict(self, time: datetime) -> bool:
         # get the current metric value so that it can be compared with the predicted values
-
 
         prediction = self.predict_value(time)
 
