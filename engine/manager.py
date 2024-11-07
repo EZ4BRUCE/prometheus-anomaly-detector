@@ -46,6 +46,8 @@ class AnalyzeManager:
                                 "window_size": analyzer.rolling_data_window_size,
                                 "retraining_interval_minutes": analyzer.retraining_interval_minutes,
                                 "sync_new_series_interval_seconds": analyzer.sync_new_series_interval_seconds,
+                                "interval_width": analyzer.interval_width,
+                                "future_offset": analyzer.future_offset,
                             }
                         )
             return jobs
