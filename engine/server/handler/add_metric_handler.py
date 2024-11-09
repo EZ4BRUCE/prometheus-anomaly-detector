@@ -135,10 +135,7 @@ def validate_parameters(data):
         )
 
     interval_width = data.get("interval_width")
-    if interval_width is not None:
-        if not isinstance(interval_width, float):
-            raise ValueError("Invalid or missing 'interval_width' parameter.")
-    else:
+    if interval_width is None:
         interval_width = 1.0
 
     return (
